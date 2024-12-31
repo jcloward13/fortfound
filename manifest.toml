@@ -7,13 +7,11 @@ packages = [
   { name = "gleam_javascript", version = "0.13.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_javascript", source = "hex", outer_checksum = "F98328FCF573DA6F3A35D7F6CB3F9FF19FD5224CCBA9151FCBEAA0B983AF2F58" },
   { name = "gleam_json", version = "2.1.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_json", source = "hex", outer_checksum = "0A57FB5666E695FD2BEE74C0428A98B0FC11A395D2C7B4CDF5E22C5DD32C74C6" },
   { name = "gleam_stdlib", version = "0.44.0", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "A6E55E309A6778206AAD4038D9C49E15DF71027A1DB13C6ADA06BFDB6CF1260E" },
-  { name = "gleeunit", version = "1.2.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleeunit", source = "hex", outer_checksum = "F7A7228925D3EE7D0813C922E062BFD6D7E9310F0BEE585D3A42F3307E3CFD13" },
   { name = "kitten", version = "0.0.2", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "kitten", source = "hex", outer_checksum = "055701F67ED8CE6421E9C477F4C30F46E2C7264DE0862C2621C2AED66B94D330" },
   { name = "plinth", version = "0.5.5", build_tools = ["gleam"], requirements = ["conversation", "gleam_javascript", "gleam_json", "gleam_stdlib"], otp_app = "plinth", source = "hex", outer_checksum = "246CDDC6281A237DCCA71FD67C5AEA6246D4278784DD4DF016488A9C9F4CF31E" },
 ]
 
 [requirements]
-gleam_stdlib = { version = ">= 0.34.0 and < 2.0.0" }
-gleeunit = { version = ">= 1.0.0 and < 2.0.0" }
+gleam_stdlib = { version = ">= 0.44.0 and < 1.0.0" }
 kitten = { version = ">= 0.0.2 and < 1.0.0" }
 plinth = { version = ">= 0.5.5 and < 1.0.0" }
