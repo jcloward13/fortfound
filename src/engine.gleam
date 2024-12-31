@@ -1,5 +1,7 @@
+import gleam/float
 import gleam/function.{identity}
 import gleam/int
+import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import kitten/canvas
@@ -12,7 +14,8 @@ import plinth/browser/window
 
 pub type Object(loc) {
   Object(
-    loc: loc,
+    name: String,
+    loc: Option(loc),
     position: Vec2,
     size: Vec2,
     draw: fn(Object(loc), draw.Context) -> Nil,
@@ -63,32 +66,52 @@ pub type Event(loc) {
   Released(dragged: loc, target: loc)
 }
 
+fn find_closest_overlap(
+  object: Object(loc),
+  others: List(Object(loc)),
+) -> Result(Object(loc), Nil) {
+  others
+  |> list.filter(fn(other) {
+    other.targettable
+    && simulate.is_overlapping(
+      object.position,
+      object.size,
+      other.position,
+      other.size,
+    )
+  })
+  |> list.sort(by: fn(other1, other2) {
+    float.compare(
+      object.position |> vec2.dist(other1.position),
+      object.position |> vec2.dist(other2.position),
+    )
+  })
+  |> list.first
+}
+
 fn try_release_dragged_object(
   state: State(game, loc),
 ) -> #(State(game, loc), Option(Event(loc))) {
   case state.dragged_object {
-    Some(dragged) -> {
-      let target =
-        state.static_objects
-        |> list.find(fn(other) {
-          other.targettable
-          && simulate.is_overlapping(
-            dragged.object.position,
-            dragged.object.size,
-            other.position,
-            other.size,
-          )
-        })
+    Some(DraggedObject(
+      object: Object(
+        loc: Some(source_loc),
+        ..,
+      ) as dragged,
+      original_position:,
+      ..,
+    )) -> {
+      let target = find_closest_overlap(dragged, state.static_objects)
 
       let #(new_position, event) = case target {
-        Ok(target) -> #(
-          target.position,
-          Some(Released(dragged.object.loc, target.loc)),
+        Ok(Object(loc: Some(target_loc), position: new_position, ..)) -> #(
+          new_position,
+          Some(Released(source_loc, target_loc)),
         )
-        _ -> #(dragged.original_position, None)
+        _ -> #(original_position, None)
       }
 
-      let released_object = Object(..dragged.object, position: new_position)
+      let released_object = Object(..dragged, position: new_position)
       let new_state =
         State(
           ..state,

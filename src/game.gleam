@@ -5,8 +5,11 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
+import kitten/math
+import kitten/vec2.{Vec2}
 import model.{
-  type Card, type Location, type Move, type State, type Suit,
+  type Card, type Location, type MajorArcanaFoundation,
+  type MinorArcanaFoundation, type Move, type State, type Suit,
   BlockingMinorArcanaFoundation, Clubs, Coins, Column, Cups, MajorArcana,
   MajorArcanaFoundation, MinorArcana, MinorArcanaFoundation, Move, State, Swords,
 }
@@ -273,6 +276,29 @@ pub fn update(state: State, event: engine.Event(Location)) -> State {
   }
 }
 
+fn view_slot(column_index: Int) -> engine.Object(Location) {
+  engine.Object(
+    name: "slot " <> int.to_string(column_index),
+    loc: Some(Column(column_index)),
+    position: styles.tableau_card_position(column_index:, card_index: 0),
+    size: styles.card_size,
+    draw: fn(obj, context) { styles.draw_slot(obj.position, context) },
+    clickable: False,
+    draggable: False,
+    targettable: True,
+  )
+}
+
+fn card_name(card: Card) -> String {
+  case card {
+    MajorArcana(value) -> "major " <> int.to_string(value)
+    MinorArcana(Clubs, value) -> "clubs " <> int.to_string(value)
+    MinorArcana(Coins, value) -> "coins " <> int.to_string(value)
+    MinorArcana(Cups, value) -> "cups " <> int.to_string(value)
+    MinorArcana(Swords, value) -> "swords " <> int.to_string(value)
+  }
+}
+
 fn view_cards(
   column_index: Int,
   cards: List(Card),
@@ -283,8 +309,9 @@ fn view_cards(
   use card, card_index <- list.index_map(cards)
 
   engine.Object(
-    loc: Column(column_index),
-    position: styles.card_position(column_index, card_index),
+    name: card_name(card),
+    loc: Some(Column(column_index)),
+    position: styles.tableau_card_position(column_index:, card_index:),
     size: styles.card_size,
     draw: fn(obj, context) { styles.draw_card(card, obj.position, context) },
     clickable: card_index == last_card_index,
@@ -297,18 +324,67 @@ fn view_column(column: #(Int, List(Card))) -> List(engine.Object(Location)) {
   let #(column_index, cards) = column
 
   case cards {
-    [] -> [
-      engine.Object(
-        loc: Column(column_index),
-        position: styles.card_position(column_index, 0),
-        size: styles.card_size,
-        draw: fn(obj, context) { styles.draw_slot(obj.position, context) },
-        clickable: False,
-        draggable: False,
-        targettable: True,
-      ),
-    ]
+    [] -> [view_slot(column_index)]
     _ -> view_cards(column_index, cards) |> list.reverse
+  }
+}
+
+fn view_major_arcana_foundation(
+  foundation: MajorArcanaFoundation,
+) -> engine.Object(Location) {
+  engine.Object(
+    name: "major arcana foundation",
+    loc: None,
+    position: styles.major_arcana_foundation_position(),
+    size: styles.card_size,
+    draw: fn(obj, context) {
+      styles.draw_major_arcana_foundation(foundation, obj.position, context)
+    },
+    clickable: False,
+    draggable: False,
+    targettable: False,
+  )
+}
+
+fn view_minor_arcana_foundation(
+  foundation: MinorArcanaFoundation,
+) -> List(engine.Object(Location)) {
+  let position = styles.minor_arcana_foundation_position()
+
+  let foundation_cards =
+    engine.Object(
+      name: "minor arcana foundation",
+      loc: Some(BlockingMinorArcanaFoundation),
+      position:,
+      size: styles.minor_arcana_foundation_size(),
+      draw: fn(obj, context) {
+        styles.draw_minor_arcana_foundation(foundation, obj.position, context)
+      },
+      clickable: False,
+      draggable: False,
+      targettable: foundation.blocking |> option.is_none,
+    )
+
+  let blocking_card = {
+    use card <- option.map(foundation.blocking)
+    let angle = math.deg_to_rad(-90.0)
+    engine.Object(
+      name: "blocking: " <> card_name(card),
+      loc: Some(BlockingMinorArcanaFoundation),
+      position:,
+      size: Vec2(x: styles.card_size.y, y: styles.card_size.x),
+      draw: fn(obj, context) {
+        styles.draw_rotated_card(card, obj.position, angle, context)
+      },
+      clickable: False,
+      draggable: True,
+      targettable: False,
+    )
+  }
+
+  case blocking_card {
+    Some(blocking_card) -> [blocking_card, foundation_cards]
+    None -> [foundation_cards]
   }
 }
 
@@ -316,5 +392,8 @@ pub fn view(state: State) -> List(engine.Object(Location)) {
   state.columns
   |> dict.to_list
   |> list.flat_map(view_column)
-  // TODO: Draw foundations.
+  |> list.append([
+    view_major_arcana_foundation(state.major_arcana_foundation),
+    ..view_minor_arcana_foundation(state.minor_arcana_foundation)
+  ])
 }
