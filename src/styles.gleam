@@ -1,143 +1,101 @@
-import game
 import gleam/int
-import gleam/list
-import sketch as s
-import sketch/size.{type Size}
-
-pub fn composed(classes: List(s.Class)) -> s.Class {
-  classes |> list.map(s.compose) |> s.class
+import kitten/color
+import kitten/draw
+import kitten/vec2.{type Vec2, Vec2}
+import model.{
+  type Card, type Suit, Clubs, Coins, Cups, MajorArcana, MinorArcana, Swords,
 }
 
-pub fn background_class() -> s.Class {
-  s.class([
-    s.background("#302017"),
-    s.user_select("none"),
-    s.height(size.vh(100)),
-    s.padding(size.percent(2)),
-  ])
+pub const card_size = Vec2(150.0, 260.0)
+
+fn card_vertices(position: Vec2) -> List(Vec2) {
+  let Vec2(x, y) = position
+
+  let half_size = card_size |> vec2.scale(0.5)
+  let Vec2(half_width, half_height) = half_size
+
+  [
+    Vec2(x -. half_width, y +. half_height),
+    position |> vec2.add(half_size),
+    Vec2(x +. half_width, y -. half_height),
+    position |> vec2.subtract(half_size),
+    Vec2(x -. half_width, y +. half_height),
+  ]
 }
 
-pub type StackDirection {
-  Horizontal
-  Vertical
+pub fn draw_slot(position: Vec2, context: draw.Context) -> Nil {
+  let assert Ok(stroke_color) = color.from_hex("#8d693b")
+
+  context
+  |> draw.path(card_vertices(position), width: 3.0, color: stroke_color)
+  Nil
 }
 
-pub type GridRow {
-  GridRow(Int)
-}
-
-pub type GridColumn {
-  GridColumn(Int)
-}
-
-pub fn grid_row_from_index(index: Int, of total: Int) -> GridRow {
-  GridRow(total - index)
-}
-
-pub fn grid_column_from_index(index: Int) -> GridColumn {
-  GridColumn(index + 1)
-}
-
-fn grid_container_class(col_gap col_gap: Size) -> s.Class {
-  s.class([s.display("grid"), s.column_gap(col_gap)])
-}
-
-pub fn major_arcana_foundation_class() -> s.Class {
-  grid_container_class(col_gap: size.vh(3))
-}
-
-pub fn minor_arcana_foundation_class() -> s.Class {
-  grid_container_class(col_gap: size.vh(3))
-}
-
-pub fn tableau_class() -> s.Class {
-  grid_container_class(col_gap: size.vh(3))
-}
-
-pub fn grid_element_class(
-  row: GridRow,
-  col: GridColumn,
-  direction: StackDirection,
-  is_topmost: Bool,
-) -> s.Class {
-  let GridRow(row) = row
-  let GridColumn(col) = col
-
-  let #(aspect_ratio, border_overlap_style, row_span) = case
-    is_topmost,
-    direction
-  {
-    False, Vertical -> #(s.aspect_ratio("160 / 40"), s.border_bottom("none"), 1)
-    False, Horizontal -> #(
-      s.aspect_ratio("25 / 280"),
-      s.border_right("none"),
-      1,
-    )
-    True, _ -> #(s.aspect_ratio("160 / 280"), s.border("solid"), 7)
-  }
-  s.class([
-    s.grid_row(int.to_string(row) <> "/ span " <> int.to_string(row_span)),
-    s.grid_column(int.to_string(col)),
-    aspect_ratio,
-    border_overlap_style,
-  ])
-}
-
-pub fn card_class() -> s.Class {
-  s.class([
-    s.border_style("solid"),
-    s.padding(size.percent(3)),
-    s.font_family("sans"),
-    s.font_size(size.percent(140)),
-    s.font_weight("bold"),
-  ])
-}
-
-pub fn major_arcana_class() -> s.Class {
-  let color = "#eea96b"
-  s.class([
-    s.background_color("#282523"),
-    s.border_color(color),
-    s.color(color),
-    s.text_align("center"),
-  ])
-}
-
-pub fn minor_arcana_class(suit: game.Suit) -> s.Class {
-  let color = suit_color(suit)
-  s.class([
-    s.background_color("#f8e3c1"),
-    s.border_color(color),
-    s.color(color),
-    s.text_align("left"),
-  ])
-}
-
-fn suit_color(suit: game.Suit) -> String {
+fn suit_color(suit: Suit) -> String {
   case suit {
-    game.Clubs -> "#497327"
-    game.Coins -> "#956f3f"
-    game.Cups -> "#963728"
-    game.Swords -> "#326973"
+    Clubs -> "#497327"
+    Coins -> "#956f3f"
+    Cups -> "#963728"
+    Swords -> "#326973"
   }
 }
 
-pub fn suit_icon(suit: game.Suit) -> String {
+pub fn suit_icon(suit: Suit) -> String {
   case suit {
-    game.Clubs -> "🌿"
-    game.Coins -> "🪙"
-    game.Cups -> "🍷"
-    game.Swords -> "⚔️"
+    Clubs -> "🌿"
+    Coins -> "🪙"
+    Cups -> "🍷"
+    Swords -> "⚔️"
   }
 }
 
-pub fn selected_class() -> s.Class {
-  s.class([
-    s.transform("scale(1.1)"),
-    s.box_shadow("5px -5px 7px 7px rgba(0, 0, 0, 0.2);"),
-  ])
+fn card_text(card: Card) -> String {
+  case card {
+    MajorArcana(value) -> value |> int.to_string
+    MinorArcana(suit, value) ->
+      case value {
+        1 -> "A"
+        11 -> "J"
+        12 -> "Q"
+        13 -> "K"
+        _ -> value |> int.to_string
+      }
+      <> suit_icon(suit)
+  }
 }
 
-pub fn empty_slot_class() -> s.Class {
-  s.class([s.border("solid"), s.border_color("#946e3e")])
+pub fn draw_card(card: Card, position: Vec2, context: draw.Context) -> Nil {
+  let assert Ok(fill_color) =
+    case card {
+      MajorArcana(_) -> "#282523"
+      MinorArcana(_, _) -> "#f8e3c1"
+    }
+    |> color.from_hex
+
+  let assert Ok(stroke_color) =
+    case card {
+      MajorArcana(_) -> "#eea96b"
+      MinorArcana(suit, _) -> suit_color(suit)
+    }
+    |> color.from_hex
+
+  context
+  |> draw.rect(position, size: card_size, color: fill_color)
+  |> draw.path(card_vertices(position), width: 3.0, color: stroke_color)
+  |> draw.text(
+    card_text(card),
+    position |> vec2.add(Vec2(0.0, 100.0)),
+    size: 28.0,
+    weight: 900.0,
+    font: "Verdana",
+    tilt: 0.0,
+    color: stroke_color,
+  )
+  Nil
+}
+
+pub fn card_position(column_index: Int, card_index: Int) -> Vec2 {
+  let x = int.to_float(column_index - 5) *. card_size.x *. 1.25
+  let y = 200.0 -. int.to_float(card_index) *. card_size.y /. 7.0
+  Vec2(x, y)
 }

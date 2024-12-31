@@ -1,21 +1,16 @@
+import engine
 import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
-
-pub type Suit {
-  Coins
-  Swords
-  Clubs
-  Cups
+import model.{
+  type Card, type Location, type Move, type State, type Suit,
+  BlockingMinorArcanaFoundation, Clubs, Coins, Column, Cups, MajorArcana,
+  MajorArcanaFoundation, MinorArcana, MinorArcanaFoundation, Move, State, Swords,
 }
-
-pub type Card {
-  MajorArcana(value: Int)
-  MinorArcana(suit: Suit, value: Int)
-}
+import styles
 
 fn generate_all_cards() -> List(Card) {
   let major_arcana =
@@ -31,8 +26,8 @@ fn generate_all_cards() -> List(Card) {
   list.append(major_arcana, minor_arcana)
 }
 
-fn generate_columns() -> Dict(Int, List(Card)) {
-  let columns = generate_all_cards() |> list.shuffle |> list.sized_chunk(7)
+fn distribute_cards(cards: List(Card)) -> Dict(Int, List(Card)) {
+  let columns = cards |> list.shuffle |> list.sized_chunk(7)
 
   let left_columns = columns |> list.take(5)
   let right_columns = columns |> list.drop(5)
@@ -43,43 +38,9 @@ fn generate_columns() -> Dict(Int, List(Card)) {
   |> dict.from_list
 }
 
-pub type MajorArcanaFoundation {
-  MajorArcanaFoundation(low: Option(Int), high: Option(Int))
-}
-
-pub type MinorArcanaFoundation {
-  MinorArcanaFoundation(
-    coins: Int,
-    swords: Int,
-    clubs: Int,
-    cups: Int,
-    blocking: Option(Card),
-  )
-}
-
-pub fn minor_arcana_foundation_cards(
-  foundation: MinorArcanaFoundation,
-) -> List(Card) {
-  [
-    MinorArcana(Clubs, foundation.clubs),
-    MinorArcana(Coins, foundation.coins),
-    MinorArcana(Cups, foundation.cups),
-    MinorArcana(Swords, foundation.swords),
-  ]
-}
-
-pub type GameState {
-  GameState(
-    major_arcana_foundation: MajorArcanaFoundation,
-    minor_arcana_foundation: MinorArcanaFoundation,
-    columns: Dict(Int, List(Card)),
-    previous_state: Option(GameState),
-  )
-}
-
-pub fn new_game() -> GameState {
+pub fn init() -> State {
   let state =
-    GameState(
+    State(
       major_arcana_foundation: MajorArcanaFoundation(low: None, high: None),
       minor_arcana_foundation: MinorArcanaFoundation(
         coins: 1,
@@ -88,52 +49,36 @@ pub fn new_game() -> GameState {
         cups: 1,
         blocking: None,
       ),
-      columns: generate_columns(),
+      columns: generate_all_cards() |> distribute_cards(),
       previous_state: None,
     )
 
   // Do not accept initial state where some cards can immediately go to foundations.
   case find_ready_for_foundation(state) {
-    Ok(_) -> new_game()
+    Ok(_) -> init()
     Error(_) -> state
   }
 }
 
-pub type Location {
-  Column(Int)
-  BlockingMinorArcanaFoundation
-}
-
-pub type Move {
-  Move(source: Location, target: Location)
-}
-
-fn are_adjacent(n1: Int, n2: Int) -> Bool {
+fn are_consecutive(n1: Int, n2: Int) -> Bool {
   int.absolute_value(n1 - n2) == 1
 }
 
 fn are_stackable(c1: Card, c2: Card) -> Bool {
   case c1, c2 {
-    MajorArcana(v1), MajorArcana(v2) -> are_adjacent(v1, v2)
+    MajorArcana(v1), MajorArcana(v2) -> are_consecutive(v1, v2)
     MinorArcana(suit: s1, value: v1), MinorArcana(suit: s2, value: v2) ->
-      s1 == s2 && are_adjacent(v1, v2)
+      s1 == s2 && are_consecutive(v1, v2)
     _, _ -> False
   }
 }
 
-fn can_stack(selected: Card, onto column: List(Card)) -> Bool {
-  case column {
-    [] -> True
-    [topmost, ..] -> are_stackable(selected, topmost)
-  }
-}
-
-fn get_column(state: GameState, index: Int) -> List(Card) {
+fn get_column(state: State, index: Int) -> List(Card) {
   let assert Ok(column) = dict.get(state.columns, index)
   column
 }
 
-fn get_card(state: GameState, loc: Location) -> Result(Card, Nil) {
+fn get_card(state: State, loc: Location) -> Result(Card, Nil) {
   case loc {
     BlockingMinorArcanaFoundation ->
       state.minor_arcana_foundation.blocking
@@ -145,8 +90,8 @@ fn get_card(state: GameState, loc: Location) -> Result(Card, Nil) {
   }
 }
 
-fn with_blocking_card(state: GameState, card: Option(Card)) -> GameState {
-  GameState(
+fn update_blocker(state: State, card: Option(Card)) -> State {
+  State(
     ..state,
     minor_arcana_foundation: MinorArcanaFoundation(
       ..state.minor_arcana_foundation,
@@ -155,12 +100,12 @@ fn with_blocking_card(state: GameState, card: Option(Card)) -> GameState {
   )
 }
 
-fn with_updated_column(
-  state: GameState,
+fn update_column(
+  state: State,
   at index: Int,
   with func: fn(List(Card)) -> List(Card),
-) -> GameState {
-  GameState(
+) -> State {
+  State(
     ..state,
     columns: dict.insert(
       into: state.columns,
@@ -170,29 +115,28 @@ fn with_updated_column(
   )
 }
 
-fn remove_card(state: GameState, loc: Location) -> GameState {
+fn remove_card(state: State, loc: Location) -> State {
   case loc {
-    BlockingMinorArcanaFoundation -> state |> with_blocking_card(None)
-    Column(index) ->
-      state |> with_updated_column(at: index, with: list.drop(_, 1))
+    BlockingMinorArcanaFoundation -> state |> update_blocker(None)
+    Column(index) -> state |> update_column(at: index, with: list.drop(_, 1))
   }
 }
 
-fn pop_card(state: GameState, loc: Location) -> Result(#(Card, GameState), Nil) {
+fn pop_card(state: State, loc: Location) -> Result(#(Card, State), Nil) {
   use card <- result.map(get_card(state, loc))
   let new_state = remove_card(state, loc)
   #(card, new_state)
 }
 
-fn put_card(state: GameState, card: Card, in loc: Location) -> GameState {
+fn put_card(state: State, card: Card, in loc: Location) -> State {
   case loc {
-    BlockingMinorArcanaFoundation -> state |> with_blocking_card(Some(card))
+    BlockingMinorArcanaFoundation -> state |> update_blocker(Some(card))
     Column(index) ->
-      state |> with_updated_column(at: index, with: list.prepend(_, card))
+      state |> update_column(at: index, with: list.prepend(_, card))
   }
 }
 
-pub fn is_valid(state: GameState, move: Move) -> Bool {
+pub fn is_valid(state: State, move: Move) -> Bool {
   use <- bool.guard(move.source == move.target, False)
 
   let selected = get_card(state, move.source)
@@ -203,25 +147,27 @@ pub fn is_valid(state: GameState, move: Move) -> Bool {
       state.minor_arcana_foundation.blocking |> option.is_none
 
     Ok(card), Column(index) -> {
-      let column = get_column(state, index)
-      can_stack(card, onto: column)
+      case get_column(state, index) {
+        [] -> True
+        [topmost, ..] -> are_stackable(card, topmost)
+      }
     }
   }
 }
 
-fn next_low_major_arcana(state: GameState) -> Int {
+fn next_low_major_arcana(state: State) -> Int {
   state.major_arcana_foundation.low
   |> option.map(int.add(_, 1))
   |> option.unwrap(or: 0)
 }
 
-fn next_high_major_arcana(state: GameState) -> Int {
+fn next_high_major_arcana(state: State) -> Int {
   state.major_arcana_foundation.high
   |> option.map(int.subtract(_, 1))
   |> option.unwrap(or: 21)
 }
 
-fn next_minor_arcana(state: GameState, suit: Suit) -> Int {
+fn next_minor_arcana(state: State, suit: Suit) -> Int {
   case suit {
     Coins -> state.minor_arcana_foundation.coins + 1
     Swords -> state.minor_arcana_foundation.swords + 1
@@ -230,7 +176,7 @@ fn next_minor_arcana(state: GameState, suit: Suit) -> Int {
   }
 }
 
-fn is_ready_for_foundation(state: GameState, card: Card) -> Bool {
+fn is_ready_for_foundation(state: State, card: Card) -> Bool {
   case card {
     MajorArcana(value) -> {
       let expected_low = next_low_major_arcana(state)
@@ -241,7 +187,7 @@ fn is_ready_for_foundation(state: GameState, card: Card) -> Bool {
   }
 }
 
-fn find_ready_for_foundation(state: GameState) -> Result(Location, Nil) {
+fn find_ready_for_foundation(state: State) -> Result(Location, Nil) {
   let locations = [
     BlockingMinorArcanaFoundation,
     ..state.columns
@@ -265,7 +211,7 @@ fn find_ready_for_foundation(state: GameState) -> Result(Location, Nil) {
   })
 }
 
-fn with_added_to_foundation(state: GameState, card: Card) -> GameState {
+fn move_to_foundation(state: State, card: Card) -> State {
   case card {
     MajorArcana(value) -> {
       let expected_low = next_low_major_arcana(state)
@@ -279,7 +225,7 @@ fn with_added_to_foundation(state: GameState, card: Card) -> GameState {
           MajorArcanaFoundation(..current, high: Some(value))
         _ -> panic
       }
-      GameState(..state, major_arcana_foundation: new)
+      State(..state, major_arcana_foundation: new)
     }
 
     MinorArcana(suit, value) -> {
@@ -290,23 +236,23 @@ fn with_added_to_foundation(state: GameState, card: Card) -> GameState {
         Clubs -> MinorArcanaFoundation(..current, clubs: value)
         Cups -> MinorArcanaFoundation(..current, cups: value)
       }
-      GameState(..state, minor_arcana_foundation: new)
+      State(..state, minor_arcana_foundation: new)
     }
   }
 }
 
-fn apply_colaterals(state: GameState) -> GameState {
+fn apply_colaterals(state: State) -> State {
   case find_ready_for_foundation(state) {
     Ok(location) -> {
       let assert Ok(#(card, state_without_card)) = pop_card(state, location)
-      let new_state = state_without_card |> with_added_to_foundation(card)
+      let new_state = state_without_card |> move_to_foundation(card)
       apply_colaterals(new_state)
     }
     _ -> state
   }
 }
 
-pub fn try_make_move(state: GameState, move: Move) -> GameState {
+pub fn try_make_move(state: State, move: Move) -> State {
   case is_valid(state, move) {
     True -> {
       let assert Ok(#(selected, state)) = pop_card(state, move.source)
@@ -317,4 +263,58 @@ pub fn try_make_move(state: GameState, move: Move) -> GameState {
     }
     False -> apply_colaterals(state)
   }
+}
+
+pub fn update(state: State, event: engine.Event(Location)) -> State {
+  case event {
+    engine.Clicked(_location) -> todo
+    engine.Released(source, target) ->
+      try_make_move(state, Move(source, target))
+  }
+}
+
+fn view_cards(
+  column_index: Int,
+  cards: List(Card),
+) -> List(engine.Object(Location)) {
+  // Topmost card last.
+  let last_card_index = list.length(cards) - 1
+  let cards = list.reverse(cards)
+  use card, card_index <- list.index_map(cards)
+
+  engine.Object(
+    loc: Column(column_index),
+    position: styles.card_position(column_index, card_index),
+    size: styles.card_size,
+    draw: fn(obj, context) { styles.draw_card(card, obj.position, context) },
+    clickable: card_index == last_card_index,
+    draggable: card_index == last_card_index,
+    targettable: card_index == last_card_index,
+  )
+}
+
+fn view_column(column: #(Int, List(Card))) -> List(engine.Object(Location)) {
+  let #(column_index, cards) = column
+
+  case cards {
+    [] -> [
+      engine.Object(
+        loc: Column(column_index),
+        position: styles.card_position(column_index, 0),
+        size: styles.card_size,
+        draw: fn(obj, context) { styles.draw_slot(obj.position, context) },
+        clickable: False,
+        draggable: False,
+        targettable: True,
+      ),
+    ]
+    _ -> view_cards(column_index, cards) |> list.reverse
+  }
+}
+
+pub fn view(state: State) -> List(engine.Object(Location)) {
+  state.columns
+  |> dict.to_list
+  |> list.flat_map(view_column)
+  // TODO: Draw foundations.
 }
