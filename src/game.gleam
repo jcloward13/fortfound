@@ -1,9 +1,10 @@
 import engine
-import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/int
+import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/order
 import gleam/result
 import kitten/math
 import kitten/vec2.{Vec2}
@@ -35,7 +36,7 @@ fn distribute_cards(cards: List(Card)) -> Dict(Int, List(Card)) {
 
   let left_columns = columns |> list.take(5)
   let right_columns = columns |> list.drop(5)
-  let all_columns = list.append(left_columns, [[], ..right_columns])
+  let all_columns = list.flatten([left_columns, [[]], right_columns])
 
   all_columns
   |> list.index_map(fn(column, index) { #(index, column) })
@@ -59,7 +60,12 @@ pub fn init() -> Game {
   // Do not accept initial state where some cards can immediately go to foundations.
   case find_ready_for_foundation(current_state) {
     Ok(_) -> init()
-    Error(_) -> Game(current_state:, moved_card: None, previous_state: None)
+    _ ->
+      // Do not accept unwinnable initial state.
+      case is_winnable(current_state, 0) {
+        True -> Game(current_state:, moved_card: None, previous_state: None)
+        _ -> init()
+      }
   }
 }
 
@@ -144,8 +150,6 @@ fn put_card(state: State, card: Card, in loc: Location) -> State {
 }
 
 fn is_valid(state: State, move: Move) -> Bool {
-  use <- bool.guard(move.source == move.target, False)
-
   let selected = get_card(state, move.source)
   case selected, move.target {
     Error(Nil), _ -> False
@@ -275,6 +279,84 @@ fn try_make_move(state: State, move: Move) -> #(State, Option(Card)) {
       #(new_state, Some(selected))
     }
     False -> #(apply_colaterals(state), None)
+  }
+}
+
+fn is_won(state: State) -> Bool {
+  case state.major_arcana_foundation.low, state.major_arcana_foundation.high {
+    Some(low), Some(high) -> low + 1 == high
+    _, _ -> False
+  }
+  && state.minor_arcana_foundation.coins == 13
+  && state.minor_arcana_foundation.swords == 13
+  && state.minor_arcana_foundation.clubs == 13
+  && state.minor_arcana_foundation.cups == 13
+}
+
+fn valid_moves(state: State) -> List(Move) {
+  let locations = [
+    BlockingMinorArcanaFoundation,
+    ..list.range(0, 10)
+    |> list.map(Column)
+  ]
+
+  locations
+  |> list.combination_pairs
+  |> list.map(fn(loc_pair) {
+    let #(source, destination) = loc_pair
+    Move(source, destination)
+  })
+  |> list.filter(is_valid(state, _))
+}
+
+fn score(state: State) -> Int {
+  let empty_columns =
+    state.columns
+    |> dict.values
+    |> list.count(list.is_empty)
+
+  let major_arcanas_in_foundation =
+    case state.major_arcana_foundation.low {
+      Some(value) -> value + 1
+      _ -> 0
+    }
+    + case state.major_arcana_foundation.high {
+      Some(value) -> 21 - value + 1
+      _ -> 0
+    }
+
+  let minor_arcanas_in_foundation =
+    state.minor_arcana_foundation.coins
+    + state.minor_arcana_foundation.swords
+    + state.minor_arcana_foundation.clubs
+    + state.minor_arcana_foundation.cups
+
+  empty_columns * 10 + major_arcanas_in_foundation + minor_arcanas_in_foundation
+}
+
+fn is_winnable(state: State, depth: Int) -> Bool {
+  case depth % 10 == 0 {
+    True -> io.debug(depth)
+    False -> 0
+  }
+
+  case is_won(state) {
+    True -> True
+    _ -> {
+      let next_states =
+        valid_moves(state)
+        |> list.map(fn(move) {
+          let #(state, _) = try_make_move(state, move)
+          state
+        })
+
+      next_states
+      |> list.sort(
+        by: fn(s1, s2) { int.compare(score(s1), score(s2)) }
+        |> order.reverse,
+      )
+      |> list.any(is_winnable(_, depth + 1))
+    }
   }
 }
 
