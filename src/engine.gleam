@@ -1,7 +1,5 @@
 import gleam/float
-import gleam/function.{identity}
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import kitten/canvas
@@ -89,7 +87,25 @@ fn find_closest_overlap(
   |> list.first
 }
 
-fn try_release_dragged_object(
+fn try_click_object(state: State(game, loc)) -> Option(Event(loc)) {
+  let mouse_pos = mouse.pos()
+
+  let clicked =
+    state.static_objects
+    |> list.find(fn(object) {
+      object.clickable
+      && simulate.is_within(mouse_pos, object.position, object.size)
+    })
+
+  case clicked {
+    Ok(Object(loc: Some(loc), ..)) -> {
+      Some(Clicked(loc))
+    }
+    _ -> None
+  }
+}
+
+fn release_object_if_dragging(
   state: State(game, loc),
 ) -> #(State(game, loc), Option(Event(loc))) {
   case state.dragged_object {
@@ -167,9 +183,9 @@ fn try_grab_object(state: State(game, loc)) -> State(game, loc) {
 }
 
 fn update_game_with_event(
-  state_event_pair: #(State(game, loc), Option(Event(loc))),
+  state: State(game, loc),
+  event: Option(Event(loc)),
 ) -> State(game, loc) {
-  let #(state, event) = state_event_pair
   case event {
     Some(event) -> {
       let game_state = state.update_game(state.game_state, event)
@@ -181,23 +197,25 @@ fn update_game_with_event(
   }
 }
 
-fn no_effect(state: State(game, loc)) -> #(State(game, loc), Option(Event(loc))) {
-  #(state, None)
-}
-
 fn update(state: State(game, loc)) -> State(game, loc) {
-  state
-  |> case mouse.was_released(mouse.LMB) {
-    True -> try_release_dragged_object
-    _ -> no_effect
+  let state = case mouse.was_released(mouse.LMB) {
+    True -> {
+      let #(new_state, event) = release_object_if_dragging(state)
+      update_game_with_event(new_state, event)
+    }
+    _ -> state
   }
-  |> update_game_with_event
-  |> case mouse.was_pressed(mouse.LMB) {
-    True -> try_grab_object
-    _ -> identity
+
+  let state = case mouse.was_pressed(mouse.LMB) {
+    True -> {
+      let state = try_grab_object(state)
+      let event = try_click_object(state)
+      update_game_with_event(state, event)
+    }
+    _ -> state
   }
-  |> try_move_dragged_object
-  // TODO: handle Clicked event
+
+  state |> try_move_dragged_object
 }
 
 fn view(state: State(game, loc)) -> Nil {

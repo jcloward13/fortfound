@@ -256,6 +256,24 @@ pub fn draw_rotated_card(
   Nil
 }
 
+pub fn draw_scaled_card(
+  card: Card,
+  position: Vec2,
+  scale: Float,
+  context: draw.Context,
+) -> Nil {
+  context
+  |> draw.set_camera_pos(vec2.invert(position))
+  |> draw.set_camera_scale(scale)
+  |> draw_card(card, Vec2(0.0, 0.0), _)
+
+  context
+  |> draw.set_camera_scale(1.0 /. scale)
+  |> draw.set_camera_pos(position)
+
+  Nil
+}
+
 pub fn draw_minor_arcana_foundation(
   foundation: MinorArcanaFoundation,
   position: Vec2,
@@ -271,4 +289,26 @@ pub fn draw_minor_arcana_foundation(
 
   use #(card, x) <- list.each(list.zip(cards, card_positions))
   draw_card(card, position |> vec2.set_x(x), context)
+}
+
+pub fn undo_button_position() -> Vec2 {
+  vec2.add(
+    major_arcana_foundation_position(),
+    minor_arcana_foundation_position(),
+  )
+  |> vec2.scale(0.5)
+}
+
+const undo_button_card_scale: Float = 0.6
+
+pub fn undo_button_size() -> Vec2 {
+  card_size |> vec2.scale(undo_button_card_scale)
+}
+
+pub fn draw_undo_button(
+  moved_card: Card,
+  position: Vec2,
+  context: draw.Context,
+) -> Nil {
+  draw_scaled_card(moved_card, position, undo_button_card_scale, context)
 }

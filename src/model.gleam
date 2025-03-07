@@ -43,6 +43,13 @@ pub type State {
     major_arcana_foundation: MajorArcanaFoundation,
     minor_arcana_foundation: MinorArcanaFoundation,
     columns: Dict(Int, List(Card)),
+  )
+}
+
+pub type Game {
+  Game(
+    current_state: State,
+    moved_card: Option(Card),
     previous_state: Option(State),
   )
 }
@@ -50,6 +57,7 @@ pub type State {
 pub type Location {
   Column(Int)
   BlockingMinorArcanaFoundation
+  UndoButton
 }
 
 pub type Move {

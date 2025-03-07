@@ -8,10 +8,11 @@ import gleam/result
 import kitten/math
 import kitten/vec2.{Vec2}
 import model.{
-  type Card, type Location, type MajorArcanaFoundation,
+  type Card, type Game, type Location, type MajorArcanaFoundation,
   type MinorArcanaFoundation, type Move, type State, type Suit,
-  BlockingMinorArcanaFoundation, Clubs, Coins, Column, Cups, MajorArcana,
+  BlockingMinorArcanaFoundation, Clubs, Coins, Column, Cups, Game, MajorArcana,
   MajorArcanaFoundation, MinorArcana, MinorArcanaFoundation, Move, State, Swords,
+  UndoButton,
 }
 import styles
 
@@ -41,8 +42,8 @@ fn distribute_cards(cards: List(Card)) -> Dict(Int, List(Card)) {
   |> dict.from_list
 }
 
-pub fn init() -> State {
-  let state =
+pub fn init() -> Game {
+  let current_state =
     State(
       major_arcana_foundation: MajorArcanaFoundation(low: None, high: None),
       minor_arcana_foundation: MinorArcanaFoundation(
@@ -53,13 +54,12 @@ pub fn init() -> State {
         blocking: None,
       ),
       columns: generate_all_cards() |> distribute_cards(),
-      previous_state: None,
     )
 
   // Do not accept initial state where some cards can immediately go to foundations.
-  case find_ready_for_foundation(state) {
+  case find_ready_for_foundation(current_state) {
     Ok(_) -> init()
-    Error(_) -> state
+    Error(_) -> Game(current_state:, moved_card: None, previous_state: None)
   }
 }
 
@@ -90,6 +90,8 @@ fn get_card(state: State, loc: Location) -> Result(Card, Nil) {
     Column(index) ->
       get_column(state, index)
       |> list.first
+
+    _ -> panic
   }
 }
 
@@ -122,6 +124,7 @@ fn remove_card(state: State, loc: Location) -> State {
   case loc {
     BlockingMinorArcanaFoundation -> state |> update_blocker(None)
     Column(index) -> state |> update_column(at: index, with: list.drop(_, 1))
+    _ -> panic
   }
 }
 
@@ -136,10 +139,11 @@ fn put_card(state: State, card: Card, in loc: Location) -> State {
     BlockingMinorArcanaFoundation -> state |> update_blocker(Some(card))
     Column(index) ->
       state |> update_column(at: index, with: list.prepend(_, card))
+    _ -> panic
   }
 }
 
-pub fn is_valid(state: State, move: Move) -> Bool {
+fn is_valid(state: State, move: Move) -> Bool {
   use <- bool.guard(move.source == move.target, False)
 
   let selected = get_card(state, move.source)
@@ -155,6 +159,8 @@ pub fn is_valid(state: State, move: Move) -> Bool {
         [topmost, ..] -> are_stackable(card, topmost)
       }
     }
+
+    _, _ -> panic
   }
 }
 
@@ -255,28 +261,51 @@ fn apply_colaterals(state: State) -> State {
   }
 }
 
-pub fn try_make_move(state: State, move: Move) -> State {
+fn try_make_move(state: State, move: Move) -> #(State, Option(Card)) {
   case is_valid(state, move) {
     True -> {
       let assert Ok(#(selected, state)) = pop_card(state, move.source)
-      state
-      |> put_card(selected, in: move.target)
-      // Repeat to move whole stacks.
-      |> try_make_move(move)
+
+      let #(new_state, _) =
+        state
+        |> put_card(selected, in: move.target)
+        // Repeat to move whole stacks.
+        |> try_make_move(move)
+
+      #(new_state, Some(selected))
     }
-    False -> apply_colaterals(state)
+    False -> #(apply_colaterals(state), None)
   }
 }
 
-pub fn update(state: State, event: engine.Event(Location)) -> State {
+pub fn update(game: Game, event: engine.Event(Location)) -> Game {
   case event {
-    engine.Clicked(_location) -> todo
-    engine.Released(source, target) ->
-      try_make_move(state, Move(source, target))
+    engine.Clicked(UndoButton) -> {
+      case game.previous_state {
+        None -> game
+        Some(previous_state) ->
+          Game(..game, current_state: previous_state, moved_card: None)
+      }
+    }
+
+    // TODO: allow click to select.
+    engine.Clicked(_) -> game
+
+    engine.Released(source, target) -> {
+      let #(state_after_move, moved_card) =
+        game.current_state |> try_make_move(Move(source, target))
+      let previous_state = Some(game.current_state)
+
+      case state_after_move == game.current_state {
+        True -> game
+        False ->
+          Game(current_state: state_after_move, moved_card:, previous_state:)
+      }
+    }
   }
 }
 
-fn view_slot(column_index: Int) -> engine.Object(Location) {
+fn view_slot(column_index: Int, targettable: Bool) -> engine.Object(Location) {
   engine.Object(
     name: "slot " <> int.to_string(column_index),
     loc: Some(Column(column_index)),
@@ -285,7 +314,7 @@ fn view_slot(column_index: Int) -> engine.Object(Location) {
     draw: fn(obj, context) { styles.draw_slot(obj.position, context) },
     clickable: False,
     draggable: False,
-    targettable: True,
+    targettable:,
   )
 }
 
@@ -324,8 +353,10 @@ fn view_column(column: #(Int, List(Card))) -> List(engine.Object(Location)) {
   let #(column_index, cards) = column
 
   case cards {
-    [] -> [view_slot(column_index)]
-    _ -> view_cards(column_index, cards) |> list.reverse
+    [] -> [view_slot(column_index, True)]
+    _ ->
+      [view_slot(column_index, False), ..view_cards(column_index, cards)]
+      |> list.reverse()
   }
 }
 
@@ -388,7 +419,24 @@ fn view_minor_arcana_foundation(
   }
 }
 
-pub fn view(state: State) -> List(engine.Object(Location)) {
+fn view_undo_button(moved_card: Card) -> engine.Object(Location) {
+  engine.Object(
+    name: "undo: " <> card_name(moved_card),
+    loc: Some(UndoButton),
+    position: styles.undo_button_position(),
+    size: styles.undo_button_size(),
+    draw: fn(obj, context) {
+      styles.draw_undo_button(moved_card, obj.position, context)
+    },
+    clickable: True,
+    draggable: False,
+    targettable: False,
+  )
+}
+
+pub fn view(game: Game) -> List(engine.Object(Location)) {
+  let state = game.current_state
+
   state.columns
   |> dict.to_list
   |> list.flat_map(view_column)
@@ -396,4 +444,8 @@ pub fn view(state: State) -> List(engine.Object(Location)) {
     view_major_arcana_foundation(state.major_arcana_foundation),
     ..view_minor_arcana_foundation(state.minor_arcana_foundation)
   ])
+  |> list.append(case game.moved_card {
+    Some(moved_card) -> [view_undo_button(moved_card)]
+    None -> []
+  })
 }
