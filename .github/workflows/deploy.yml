@@ -1,7 +1,7 @@
 name: deploy
 on:
   push:
-    branches: ["main"]
+    branches: ['main']
 
   workflow_dispatch:
 
@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: false
 
 jobs:
@@ -28,10 +28,12 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: false
-          gleam-version: "1.6.3"
+          gleam-version: '1.6.3'
 
       - name: Build
-        run: gleam build
+        run: |
+          cd fortfound_app
+          gleam build
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

@@ -1,21 +1,16 @@
-import engine
 import gleam/dict.{type Dict}
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/order
-import gleam/result
-import kitten/math
-import kitten/vec2.{Vec2}
-import model.{
+import gleam/set.{type Set}
+
+import fortfound_core/model.{
   type Card, type Game, type Location, type MajorArcanaFoundation,
   type MinorArcanaFoundation, type Move, type State, type Suit,
   BlockingMinorArcanaFoundation, Clubs, Coins, Column, Cups, Game, MajorArcana,
   MajorArcanaFoundation, MinorArcana, MinorArcanaFoundation, Move, State, Swords,
-  UndoButton,
 }
-import styles
 
 fn generate_all_cards() -> List(Card) {
   let major_arcana =
@@ -60,12 +55,7 @@ pub fn init() -> Game {
   // Do not accept initial state where some cards can immediately go to foundations.
   case find_ready_for_foundation(current_state) {
     Ok(_) -> init()
-    _ ->
-      // Do not accept unwinnable initial state.
-      case is_winnable(current_state, 0) {
-        True -> Game(current_state:, moved_card: None, previous_state: None)
-        _ -> init()
-      }
+    _ -> Game(current_state:, moved_card: None, previous_state: None)
   }
 }
 
@@ -135,9 +125,10 @@ fn remove_card(state: State, loc: Location) -> State {
 }
 
 fn pop_card(state: State, loc: Location) -> Result(#(Card, State), Nil) {
-  use card <- result.map(get_card(state, loc))
-  let new_state = remove_card(state, loc)
-  #(card, new_state)
+  case get_card(state, loc) {
+    Ok(card) -> Ok(#(card, remove_card(state, loc)))
+    _ -> Error(Nil)
+  }
 }
 
 fn put_card(state: State, card: Card, in loc: Location) -> State {
@@ -190,13 +181,14 @@ fn next_minor_arcana(state: State, suit: Suit) -> Int {
 }
 
 fn is_ready_for_foundation(state: State, card: Card) -> Bool {
-  case card {
-    MajorArcana(value) -> {
+  case card, state.minor_arcana_foundation.blocking {
+    MajorArcana(value), _ -> {
       let expected_low = next_low_major_arcana(state)
       let expected_high = next_high_major_arcana(state)
       value == expected_low || value == expected_high
     }
-    MinorArcana(suit, value) -> value == next_minor_arcana(state, suit)
+    MinorArcana(..), Some(_) -> False
+    MinorArcana(suit, value), None -> value == next_minor_arcana(state, suit)
   }
 }
 
@@ -208,18 +200,10 @@ fn find_ready_for_foundation(state: State) -> Result(Location, Nil) {
     |> list.map(Column)
   ]
 
-  let minor_arcana_blocked =
-    state.minor_arcana_foundation.blocking |> option.is_some()
-
-  list.find_map(locations, fn(loc) {
-    use card <- result.try(get_card(state, loc))
-    case card, minor_arcana_blocked {
-      MinorArcana(_, _), True -> Error(Nil)
-      _, _ ->
-        case is_ready_for_foundation(state, card) {
-          True -> Ok(loc)
-          False -> Error(Nil)
-        }
+  list.find(locations, fn(loc) {
+    case get_card(state, loc) {
+      Ok(card) -> is_ready_for_foundation(state, card)
+      _ -> False
     }
   })
 }
@@ -265,7 +249,7 @@ fn apply_colaterals(state: State) -> State {
   }
 }
 
-fn try_make_move(state: State, move: Move) -> #(State, Option(Card)) {
+pub fn try_make_move(state: State, move: Move) -> #(State, Option(Card)) {
   case is_valid(state, move) {
     True -> {
       let assert Ok(#(selected, state)) = pop_card(state, move.source)
@@ -334,12 +318,11 @@ fn score(state: State) -> Int {
   empty_columns * 10 + major_arcanas_in_foundation + minor_arcanas_in_foundation
 }
 
-fn is_winnable(state: State, depth: Int) -> Bool {
-  case depth % 10 == 0 {
-    True -> io.debug(depth)
-    False -> 0
-  }
+pub fn is_winnable(state: State) -> Bool {
+  is_winnable_aux(state, set.new())
+}
 
+pub fn is_winnable_aux(state: State, previous_states: Set(State)) -> Bool {
   case is_won(state) {
     True -> True
     _ -> {
@@ -350,184 +333,17 @@ fn is_winnable(state: State, depth: Int) -> Bool {
           state
         })
 
+      let previous_states = previous_states |> set.insert(state)
+
       next_states
+      |> list.filter(fn(state) { !set.contains(previous_states, state) })
+      // Sorting is not a valid optimization if most states are unwinnable.
+      // On unwinnable states we must try everything anyway...
       |> list.sort(
         by: fn(s1, s2) { int.compare(score(s1), score(s2)) }
         |> order.reverse,
       )
-      |> list.any(is_winnable(_, depth + 1))
+      |> list.any(is_winnable_aux(_, previous_states))
     }
   }
-}
-
-pub fn update(game: Game, event: engine.Event(Location)) -> Game {
-  case event {
-    engine.Clicked(UndoButton) -> {
-      case game.previous_state {
-        None -> game
-        Some(previous_state) ->
-          Game(..game, current_state: previous_state, moved_card: None)
-      }
-    }
-
-    // TODO: allow click to select.
-    engine.Clicked(_) -> game
-
-    engine.Released(source, target) -> {
-      let #(state_after_move, moved_card) =
-        game.current_state |> try_make_move(Move(source, target))
-      let previous_state = Some(game.current_state)
-
-      case state_after_move == game.current_state {
-        True -> game
-        False ->
-          Game(current_state: state_after_move, moved_card:, previous_state:)
-      }
-    }
-  }
-}
-
-fn view_slot(column_index: Int, targettable: Bool) -> engine.Object(Location) {
-  engine.Object(
-    name: "slot " <> int.to_string(column_index),
-    loc: Some(Column(column_index)),
-    position: styles.tableau_card_position(column_index:, card_index: 0),
-    size: styles.card_size,
-    draw: fn(obj, context) { styles.draw_slot(obj.position, context) },
-    clickable: False,
-    draggable: False,
-    targettable:,
-  )
-}
-
-fn card_name(card: Card) -> String {
-  case card {
-    MajorArcana(value) -> "major " <> int.to_string(value)
-    MinorArcana(Clubs, value) -> "clubs " <> int.to_string(value)
-    MinorArcana(Coins, value) -> "coins " <> int.to_string(value)
-    MinorArcana(Cups, value) -> "cups " <> int.to_string(value)
-    MinorArcana(Swords, value) -> "swords " <> int.to_string(value)
-  }
-}
-
-fn view_cards(
-  column_index: Int,
-  cards: List(Card),
-) -> List(engine.Object(Location)) {
-  // Topmost card last.
-  let last_card_index = list.length(cards) - 1
-  let cards = list.reverse(cards)
-  use card, card_index <- list.index_map(cards)
-
-  engine.Object(
-    name: card_name(card),
-    loc: Some(Column(column_index)),
-    position: styles.tableau_card_position(column_index:, card_index:),
-    size: styles.card_size,
-    draw: fn(obj, context) { styles.draw_card(card, obj.position, context) },
-    clickable: card_index == last_card_index,
-    draggable: card_index == last_card_index,
-    targettable: card_index == last_card_index,
-  )
-}
-
-fn view_column(column: #(Int, List(Card))) -> List(engine.Object(Location)) {
-  let #(column_index, cards) = column
-
-  case cards {
-    [] -> [view_slot(column_index, True)]
-    _ ->
-      [view_slot(column_index, False), ..view_cards(column_index, cards)]
-      |> list.reverse()
-  }
-}
-
-fn view_major_arcana_foundation(
-  foundation: MajorArcanaFoundation,
-) -> engine.Object(Location) {
-  engine.Object(
-    name: "major arcana foundation",
-    loc: None,
-    position: styles.major_arcana_foundation_position(),
-    size: styles.card_size,
-    draw: fn(obj, context) {
-      styles.draw_major_arcana_foundation(foundation, obj.position, context)
-    },
-    clickable: False,
-    draggable: False,
-    targettable: False,
-  )
-}
-
-fn view_minor_arcana_foundation(
-  foundation: MinorArcanaFoundation,
-) -> List(engine.Object(Location)) {
-  let position = styles.minor_arcana_foundation_position()
-
-  let foundation_cards =
-    engine.Object(
-      name: "minor arcana foundation",
-      loc: Some(BlockingMinorArcanaFoundation),
-      position:,
-      size: styles.minor_arcana_foundation_size(),
-      draw: fn(obj, context) {
-        styles.draw_minor_arcana_foundation(foundation, obj.position, context)
-      },
-      clickable: False,
-      draggable: False,
-      targettable: foundation.blocking |> option.is_none,
-    )
-
-  let blocking_card = {
-    use card <- option.map(foundation.blocking)
-    let angle = math.deg_to_rad(-90.0)
-    engine.Object(
-      name: "blocking: " <> card_name(card),
-      loc: Some(BlockingMinorArcanaFoundation),
-      position:,
-      size: Vec2(x: styles.card_size.y, y: styles.card_size.x),
-      draw: fn(obj, context) {
-        styles.draw_rotated_card(card, obj.position, angle, context)
-      },
-      clickable: False,
-      draggable: True,
-      targettable: False,
-    )
-  }
-
-  case blocking_card {
-    Some(blocking_card) -> [blocking_card, foundation_cards]
-    None -> [foundation_cards]
-  }
-}
-
-fn view_undo_button(moved_card: Card) -> engine.Object(Location) {
-  engine.Object(
-    name: "undo: " <> card_name(moved_card),
-    loc: Some(UndoButton),
-    position: styles.undo_button_position(),
-    size: styles.undo_button_size(),
-    draw: fn(obj, context) {
-      styles.draw_undo_button(moved_card, obj.position, context)
-    },
-    clickable: True,
-    draggable: False,
-    targettable: False,
-  )
-}
-
-pub fn view(game: Game) -> List(engine.Object(Location)) {
-  let state = game.current_state
-
-  state.columns
-  |> dict.to_list
-  |> list.flat_map(view_column)
-  |> list.append([
-    view_major_arcana_foundation(state.major_arcana_foundation),
-    ..view_minor_arcana_foundation(state.minor_arcana_foundation)
-  ])
-  |> list.append(case game.moved_card {
-    Some(moved_card) -> [view_undo_button(moved_card)]
-    None -> []
-  })
 }

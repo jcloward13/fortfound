@@ -1,3 +1,7 @@
+import fortfound_core/model.{
+  type Card, type MajorArcanaFoundation, type MinorArcanaFoundation, type Suit,
+  Clubs, Coins, Cups, MajorArcana, MinorArcana, Swords,
+}
 import gleam/float
 import gleam/int
 import gleam/list
@@ -6,11 +10,8 @@ import gleam/result
 import gleam/string
 import kitten/color
 import kitten/draw
+import kitten/math
 import kitten/vec2.{type Vec2, Vec2}
-import model.{
-  type Card, type MajorArcanaFoundation, type MinorArcanaFoundation, type Suit,
-  Clubs, Coins, Cups, MajorArcana, MinorArcana, Swords,
-}
 
 pub const card_size = Vec2(150.0, 260.0)
 
@@ -243,9 +244,11 @@ pub fn minor_arcana_foundation_size() -> Vec2 {
 pub fn draw_rotated_card(
   card: Card,
   position: Vec2,
-  angle: Float,
+  degrees: Float,
   context: draw.Context,
 ) -> Nil {
+  let angle = math.deg_to_rad(degrees)
+
   context
   |> draw.set_camera_angle(angle)
   |> draw_card(card, position |> vec2.rotate_left, _)

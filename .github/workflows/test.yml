@@ -8,15 +8,33 @@ on:
   pull_request:
 
 jobs:
-  test:
+  sub_packages:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sub_package: ['fortfound_core', 'fortfound_app']
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.sub_package }}
+
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: "27.1.3"
-          gleam-version: "1.6.3"
-          rebar3-version: "3"
-      - run: gleam deps download
-      - run: gleam format --check
-      - run: gleam build --warnings-as-errors
+          otp-version: '27.1.3'
+          gleam-version: '1.6.3'
+          rebar3-version: '3'
+
+      - name: Fetch dependencies
+        run: gleam deps download
+
+      - name: Build
+        run: gleam build --warnings-as-errors
+
+      - name: Check formatting
+        run: gleam format --check
+
+      - name: Test
+        if: matrix.sub_package == 'fortfound_core'
+        run: gleam test
