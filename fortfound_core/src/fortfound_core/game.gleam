@@ -2,7 +2,8 @@ import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/order
+import gleam/order.{type Order}
+import gleam/pair
 import gleam/set.{type Set}
 
 import fortfound_core/model.{
@@ -26,8 +27,8 @@ fn generate_all_cards() -> List(Card) {
   list.append(major_arcana, minor_arcana)
 }
 
-fn distribute_cards(cards: List(Card)) -> Dict(Int, List(Card)) {
-  let columns = cards |> list.shuffle |> list.sized_chunk(7)
+pub fn distribute_cards(cards: List(Card)) -> Dict(Int, List(Card)) {
+  let columns = cards |> list.sized_chunk(7)
 
   let left_columns = columns |> list.take(5)
   let right_columns = columns |> list.drop(5)
@@ -38,24 +39,40 @@ fn distribute_cards(cards: List(Card)) -> Dict(Int, List(Card)) {
   |> dict.from_list
 }
 
-pub fn init() -> Game {
-  let current_state =
-    State(
-      major_arcana_foundation: MajorArcanaFoundation(low: None, high: None),
-      minor_arcana_foundation: MinorArcanaFoundation(
-        coins: 1,
-        swords: 1,
-        clubs: 1,
-        cups: 1,
-        blocking: None,
-      ),
-      columns: generate_all_cards() |> distribute_cards(),
-    )
+pub fn empty_state() -> State {
+  State(
+    major_arcana_foundation: MajorArcanaFoundation(low: None, high: None),
+    minor_arcana_foundation: MinorArcanaFoundation(
+      coins: 1,
+      swords: 1,
+      clubs: 1,
+      cups: 1,
+      blocking: None,
+    ),
+    columns: dict.new(),
+  )
+}
+
+pub fn game_from_state(state: State) -> Game {
+  Game(current_state: state, moved_card: None, previous_state: None)
+}
+
+pub fn random_game() -> Game {
+  let columns = generate_all_cards() |> list.shuffle() |> distribute_cards()
+  let state = State(..empty_state(), columns:)
 
   // Do not accept initial state where some cards can immediately go to foundations.
-  case find_ready_for_foundation(current_state) {
-    Ok(_) -> init()
-    _ -> Game(current_state:, moved_card: None, previous_state: None)
+  case find_ready_for_foundation(state) {
+    Ok(_) -> random_game()
+    _ -> game_from_state(state)
+  }
+}
+
+pub fn random_winnable_game() -> Game {
+  let game = random_game()
+  case is_winnable(game.current_state) {
+    True -> game
+    False -> random_winnable_game()
   }
 }
 
@@ -267,30 +284,59 @@ pub fn try_make_move(state: State, move: Move) -> #(State, Option(Card)) {
 }
 
 fn is_won(state: State) -> Bool {
-  case state.major_arcana_foundation.low, state.major_arcana_foundation.high {
-    Some(low), Some(high) -> low + 1 == high
-    _, _ -> False
-  }
-  && state.minor_arcana_foundation.coins == 13
+  state.minor_arcana_foundation.coins == 13
   && state.minor_arcana_foundation.swords == 13
   && state.minor_arcana_foundation.clubs == 13
   && state.minor_arcana_foundation.cups == 13
+  && case
+    state.major_arcana_foundation.low,
+    state.major_arcana_foundation.high
+  {
+    Some(low), Some(high) -> low + 1 == high
+    _, _ -> False
+  }
 }
 
 fn valid_moves(state: State) -> List(Move) {
-  let locations = [
-    BlockingMinorArcanaFoundation,
-    ..list.range(0, 10)
-    |> list.map(Column)
-  ]
+  let #(empty_columns, non_empty_columns) =
+    state.columns
+    |> dict.to_list
+    |> list.partition(fn(index_and_column) { list.is_empty(index_and_column.1) })
+    |> pair.map_first(list.map(_, pair.first))
+    |> pair.map_second(list.map(_, pair.first))
 
-  locations
-  |> list.combination_pairs
-  |> list.map(fn(loc_pair) {
-    let #(source, destination) = loc_pair
-    Move(source, destination)
+  let potential_sources = non_empty_columns |> list.map(Column)
+
+  let potential_targets = case empty_columns {
+    [empty_column, ..] -> [Column(empty_column), ..potential_sources]
+    _ -> potential_sources
+  }
+
+  let #(potential_sources, potential_targets) = case
+    state.minor_arcana_foundation.blocking
+  {
+    Some(_) -> #(
+      [BlockingMinorArcanaFoundation, ..potential_sources],
+      potential_targets,
+    )
+    None -> #(potential_sources, [
+      BlockingMinorArcanaFoundation,
+      ..potential_targets
+    ])
+  }
+
+  potential_sources
+  |> list.flat_map(fn(source) {
+    potential_targets
+    |> list.map(fn(target) { Move(source, target) })
   })
   |> list.filter(is_valid(state, _))
+}
+
+fn count_consecutive_cards(column: List(Card)) -> Int {
+  column
+  |> list.window_by_2
+  |> list.count(fn(cards) { are_stackable(cards.0, cards.1) })
 }
 
 fn score(state: State) -> Int {
@@ -315,35 +361,69 @@ fn score(state: State) -> Int {
     + state.minor_arcana_foundation.clubs
     + state.minor_arcana_foundation.cups
 
-  empty_columns * 10 + major_arcanas_in_foundation + minor_arcanas_in_foundation
+  empty_columns
+  * 100
+  + major_arcanas_in_foundation
+  * 10
+  + minor_arcanas_in_foundation
+  * 10
+  + {
+    state.columns
+    |> dict.values
+    |> list.map(count_consecutive_cards)
+    |> int.sum
+  }
 }
 
 pub fn is_winnable(state: State) -> Bool {
-  is_winnable_aux(state, set.new())
+  is_winnable_aux([state], set.new())
 }
 
-pub fn is_winnable_aux(state: State, previous_states: Set(State)) -> Bool {
-  case is_won(state) {
-    True -> True
-    _ -> {
-      let next_states =
-        valid_moves(state)
-        |> list.map(fn(move) {
-          let #(state, _) = try_make_move(state, move)
-          state
-        })
+fn merge_and_dedup(
+  list1: List(a),
+  list2: List(a),
+  key: fn(a, a) -> Order,
+) -> List(a) {
+  case list1, list2 {
+    [], _ -> list2
+    _, [] -> list1
+    [head1, ..tail1], [head2, ..tail2] ->
+      case key(head1, head2) {
+        order.Lt -> [head1, ..merge_and_dedup(tail1, list2, key)]
+        order.Eq -> merge_and_dedup(tail1, list2, key)
+        order.Gt -> [head2, ..merge_and_dedup(list1, tail2, key)]
+      }
+  }
+}
 
-      let previous_states = previous_states |> set.insert(state)
+fn compare_scores(s1: State, s2: State) -> Order {
+  int.compare(score(s1), score(s2))
+}
 
-      next_states
-      |> list.filter(fn(state) { !set.contains(previous_states, state) })
-      // Sorting is not a valid optimization if most states are unwinnable.
-      // On unwinnable states we must try everything anyway...
-      |> list.sort(
-        by: fn(s1, s2) { int.compare(score(s1), score(s2)) }
-        |> order.reverse,
-      )
-      |> list.any(is_winnable_aux(_, previous_states))
-    }
+pub fn is_winnable_aux(pending: List(State), previous: Set(State)) -> Bool {
+  case pending {
+    [] -> False
+    [state, ..rest_of_pending] ->
+      case is_won(state) {
+        True -> True
+        False -> {
+          let previous = previous |> set.insert(state)
+
+          let next_states =
+            valid_moves(state)
+            |> list.map(fn(move) {
+              let #(state, _) = try_make_move(state, move)
+              state
+            })
+
+          let pending =
+            next_states
+            |> list.filter(fn(state) { !set.contains(previous, state) })
+            |> list.sort(by: compare_scores |> order.reverse)
+            |> merge_and_dedup(rest_of_pending, compare_scores |> order.reverse)
+
+          is_winnable_aux(pending, previous)
+        }
+      }
   }
 }

@@ -1,18 +1,39 @@
 import fortfound_app/engine
 import fortfound_app/styles
-import fortfound_core/game.{is_winnable, try_make_move}
+import fortfound_core/game.{game_from_state, random_game, try_make_move}
 import fortfound_core/model.{
   type Card, type Game, type Location, type MajorArcanaFoundation,
   type MinorArcanaFoundation, type Move, BlockingMinorArcanaFoundation, Clubs,
   Coins, Column, Cups, Game, MajorArcana, MajorArcanaFoundation, MinorArcana,
   MinorArcanaFoundation, Move, Swords, UndoButton,
 }
+import fortfound_core/serde
 import gleam/dict
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
+import gleam/result
+import gleam/uri
 import kitten/vec2.{Vec2}
+import plinth/browser/window
+
+pub fn init() -> Game {
+  let assert Ok(url) = uri.parse(window.location())
+
+  case
+    url.query
+    |> option.to_result(Nil)
+    |> result.then(serde.decode_state)
+  {
+    Ok(state) -> game_from_state(state)
+    Error(Nil) -> {
+      let game = random_game()
+      let encoded_game = serde.encode_state(game.current_state)
+      window.set_location(window.self(), "?" <> encoded_game)
+      game
+    }
+  }
+}
 
 pub fn update(game: Game, event: engine.Event(Location)) -> Game {
   case event {
@@ -38,10 +59,6 @@ pub fn update(game: Game, event: engine.Event(Location)) -> Game {
           Game(current_state: state_after_move, moved_card:, previous_state:)
       }
     }
-  }
-  |> fn(g) {
-    is_winnable(g.current_state) |> io.debug
-    g
   }
 }
 

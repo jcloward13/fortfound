@@ -7,12 +7,6 @@ pub fn main() {
   startest.run(startest.default_config())
 }
 
-pub fn winnable_example_test() {
-  scenarios.winnable_example()
-  |> game.is_winnable
-  |> expect.to_be_true
-}
-
 pub fn won_test() {
   scenarios.won_example()
   |> game.is_winnable
@@ -21,6 +15,12 @@ pub fn won_test() {
 
 pub fn trivially_winnable_test() {
   scenarios.trivially_winnable_example()
+  |> game.is_winnable
+  |> expect.to_be_true
+}
+
+pub fn winnable_example_test() {
+  scenarios.winnable_example()
   |> game.is_winnable
   |> expect.to_be_true
 }
