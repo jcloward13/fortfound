@@ -20,7 +20,7 @@ pub fn trivially_winnable_test() {
 }
 
 pub fn winnable_example_test() {
-  scenarios.winnable_example()
+  scenarios.winnable(42)
   |> game.is_winnable
   |> expect.to_be_true
 }

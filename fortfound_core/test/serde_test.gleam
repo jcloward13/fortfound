@@ -3,7 +3,7 @@ import fortfound_core/serde
 import startest/expect
 
 pub fn roundtrip_test() {
-  let state = scenarios.winnable_example()
+  let state = scenarios.winnable(42)
 
   state
   |> serde.encode_state
