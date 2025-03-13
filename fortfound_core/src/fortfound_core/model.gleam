@@ -1,3 +1,4 @@
+import fortfound_core/rng.{type Seed}
 import gleam/dict.{type Dict}
 import gleam/option.{type Option}
 
@@ -48,6 +49,7 @@ pub type State {
 
 pub type Game {
   Game(
+    seed: Seed,
     current_state: State,
     moved_card: Option(Card),
     previous_state: Option(State),

@@ -1,4 +1,4 @@
-import fortfound_core/game
+import fortfound_core/game.{game_from_seed, is_winnable}
 import fortfound_core/scenarios
 import startest
 import startest/expect
@@ -9,18 +9,22 @@ pub fn main() {
 
 pub fn won_test() {
   scenarios.won_example()
-  |> game.is_winnable
+  |> is_winnable
   |> expect.to_be_true
 }
 
 pub fn trivially_winnable_test() {
   scenarios.trivially_winnable_example()
-  |> game.is_winnable
+  |> is_winnable
   |> expect.to_be_true
 }
 
 pub fn winnable_example_test() {
-  scenarios.winnable(42)
-  |> game.is_winnable
+  let game =
+    scenarios.random_winnable_scenario()
+    |> game_from_seed
+
+  game.current_state
+  |> is_winnable
   |> expect.to_be_true
 }

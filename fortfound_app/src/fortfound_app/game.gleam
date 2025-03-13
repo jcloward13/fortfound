@@ -1,14 +1,14 @@
 import fortfound_app/engine
 import fortfound_app/styles
-import fortfound_core/game.{game_from_state, try_make_move}
+import fortfound_core/game.{game_from_seed, try_make_move}
 import fortfound_core/model.{
   type Card, type Game, type Location, type MajorArcanaFoundation,
   type MinorArcanaFoundation, type Move, BlockingMinorArcanaFoundation, Clubs,
   Coins, Column, Cups, Game, MajorArcana, MajorArcanaFoundation, MinorArcana,
   MinorArcanaFoundation, Move, Swords, UndoButton,
 }
+import fortfound_core/rng
 import fortfound_core/scenarios
-import fortfound_core/serde
 import gleam/dict
 import gleam/int
 import gleam/io
@@ -19,21 +19,31 @@ import gleam/uri
 import kitten/vec2.{Vec2}
 import plinth/browser/window
 
-pub fn init() -> Game {
+fn get_seed() -> Result(rng.Seed, Nil) {
   let assert Ok(url) = uri.parse(window.location())
 
-  case
+  use query <- result.try(
     url.query
     |> option.to_result(Nil)
-    |> result.then(serde.decode_state)
-  {
-    Ok(state) -> game_from_state(state)
+    |> result.then(uri.parse_query),
+  )
+
+  query
+  |> dict.from_list
+  |> dict.get("seed")
+  |> result.then(rng.decode_seed)
+}
+
+pub fn init() -> Game {
+  case get_seed() {
+    Ok(seed) -> game_from_seed(seed)
     Error(Nil) -> {
-      let game = game_from_state(scenarios.winnable(int.random(1000)))
-      let encoded_game = serde.encode_state(game.current_state)
-      io.debug(encoded_game)
-      // window.set_location(window.self(), "?" <> encoded_game)
-      game
+      let seed = scenarios.random_winnable_scenario()
+      let encoded_seed = rng.encode_seed(seed)
+      io.println("seed=" <> encoded_seed)
+      // window.set_location(window.self(), "?seed=" <> encoded_seed)
+
+      game_from_seed(seed)
     }
   }
 }
@@ -59,7 +69,12 @@ pub fn update(game: Game, event: engine.Event(Location)) -> Game {
       case state_after_move == game.current_state {
         True -> game
         False ->
-          Game(current_state: state_after_move, moved_card:, previous_state:)
+          Game(
+            ..game,
+            current_state: state_after_move,
+            moved_card:,
+            previous_state:,
+          )
       }
     }
   }

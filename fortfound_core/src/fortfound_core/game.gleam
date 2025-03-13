@@ -1,3 +1,4 @@
+import fortfound_core/rng.{type Seed, random_seed, shuffle}
 import gleam/dict.{type Dict}
 import gleam/int
 import gleam/list
@@ -53,18 +54,18 @@ pub fn empty_state() -> State {
   )
 }
 
-pub fn game_from_state(state: State) -> Game {
-  Game(current_state: state, moved_card: None, previous_state: None)
+pub fn game_from_seed(seed: Seed) -> Game {
+  let columns = generate_all_cards() |> shuffle(seed) |> distribute_cards()
+  let current_state = State(..empty_state(), columns:)
+  Game(seed:, current_state:, moved_card: None, previous_state: None)
 }
 
 pub fn random_game() -> Game {
-  let columns = generate_all_cards() |> list.shuffle() |> distribute_cards()
-  let state = State(..empty_state(), columns:)
-
+  let game = game_from_seed(random_seed())
   // Do not accept initial state where some cards can immediately go to foundations.
-  case find_ready_for_foundation(state) {
+  case find_ready_for_foundation(game.current_state) {
     Ok(_) -> random_game()
-    _ -> game_from_state(state)
+    _ -> game
   }
 }
 
