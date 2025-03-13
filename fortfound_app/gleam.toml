@@ -7,7 +7,7 @@ repository = { type = "github", user = "cauebs", repo = "fortfound" }
 links = [{ title = "Home page", href = "https://cauebs.github.io/fortfound" }]
 
 [dependencies]
-gleam_stdlib = ">= 0.44.0 and < 2.0.0"
+gleam_stdlib = ">= 0.56.0 and < 1.0.0"
 fortfound_core = { path = "../fortfound_core" }
-plinth = ">= 0.5.7 and < 1.0.0"
+plinth = ">= 0.5.9 and < 1.0.0"
 kitten = ">= 0.0.5 and < 1.0.0"
