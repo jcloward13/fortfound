@@ -5,13 +5,12 @@ import fortfound_core/model.{
   type Card, type Game, type Location, type MajorArcanaFoundation,
   type MinorArcanaFoundation, type Move, BlockingMinorArcanaFoundation, Clubs,
   Coins, Column, Cups, Game, MajorArcana, MajorArcanaFoundation, MinorArcana,
-  MinorArcanaFoundation, Move, Swords, UndoButton,
+  MinorArcanaFoundation, Move, NewGameButton, Swords, UndoButton,
 }
 import fortfound_core/rng
 import fortfound_core/scenarios
 import gleam/dict
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -38,18 +37,22 @@ pub fn init() -> Game {
   case get_seed() {
     Ok(seed) -> game_from_seed(seed)
     Error(Nil) -> {
-      let seed = scenarios.random_winnable_scenario()
-      let encoded_seed = rng.encode_seed(seed)
-      io.println("seed=" <> encoded_seed)
-      // window.set_location(window.self(), "?seed=" <> encoded_seed)
-
-      game_from_seed(seed)
+      start_new_game()
     }
   }
 }
 
+fn start_new_game() -> Game {
+  let seed = scenarios.random_winnable_scenario()
+  let encoded_seed = rng.encode_seed(seed)
+  window.set_location(window.self(), "?seed=" <> encoded_seed)
+  game_from_seed(seed)
+}
+
 pub fn update(game: Game, event: engine.Event(Location)) -> Game {
   case event {
+    engine.Clicked(NewGameButton) -> start_new_game()
+
     engine.Clicked(UndoButton) -> {
       case game.previous_state {
         None -> game
@@ -193,6 +196,21 @@ fn view_minor_arcana_foundation(
   }
 }
 
+pub fn view_new_game_button() -> engine.Object(Location) {
+  engine.Object(
+    name: "new game",
+    loc: Some(NewGameButton),
+    position: styles.new_game_button_position(),
+    size: styles.new_game_button_size(),
+    draw: fn(obj, context) {
+      styles.draw_new_game_button(obj.position, context)
+    },
+    clickable: True,
+    draggable: False,
+    targettable: False,
+  )
+}
+
 fn view_undo_button(moved_card: Card) -> engine.Object(Location) {
   engine.Object(
     name: "undo: " <> card_name(moved_card),
@@ -215,6 +233,7 @@ pub fn view(game: Game) -> List(engine.Object(Location)) {
   |> dict.to_list
   |> list.flat_map(view_column)
   |> list.append([
+    view_new_game_button(),
     view_major_arcana_foundation(state.major_arcana_foundation),
     ..view_minor_arcana_foundation(state.minor_arcana_foundation)
   ])

@@ -60,6 +60,7 @@ pub type Location {
   Column(Int)
   BlockingMinorArcanaFoundation
   UndoButton
+  NewGameButton
 }
 
 pub type Move {

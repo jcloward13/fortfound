@@ -19,10 +19,10 @@ fn vertical_card_spacing() -> Float {
   card_size.y /. 7.0
 }
 
-fn card_vertices(position: Vec2) -> List(Vec2) {
+fn rect_vertices(position: Vec2, size: Vec2) -> List(Vec2) {
   let Vec2(x, y) = position
 
-  let half_size = card_size |> vec2.scale(0.5)
+  let half_size = size |> vec2.scale(0.5)
   let Vec2(half_width, half_height) = half_size
 
   let vertices = [
@@ -42,7 +42,11 @@ pub fn draw_slot(position: Vec2, context: draw.Context) -> Nil {
   let assert Ok(stroke_color) = color.from_hex("#8d693b")
 
   context
-  |> draw.path(card_vertices(position), width: 3.0, color: stroke_color)
+  |> draw.path(
+    rect_vertices(position, card_size),
+    width: 3.0,
+    color: stroke_color,
+  )
   Nil
 }
 
@@ -57,10 +61,10 @@ fn suit_color(suit: Suit) -> String {
 
 pub fn suit_icon(suit: Suit) -> String {
   case suit {
-    Clubs -> "🌿"
-    Coins -> "🪙"
-    Cups -> "🍷"
-    Swords -> "⚔️"
+    Clubs -> "♣"
+    Coins -> "♦"
+    Cups -> "♥"
+    Swords -> "♠"
   }
 }
 
@@ -93,9 +97,8 @@ fn card_text_position(
     MajorArcana(..) -> tableau_card_position.x
     MinorArcana(..) ->
       tableau_card_position.x
-      -. { card_size.x /. 2.0 }
-      +. { size *. { text |> string.length |> int.to_float } /. 2.0 }
-      +. { card_size.x /. 25.0 }
+      -. { card_size.x *. 0.375 }
+      +. { size *. { text |> string.length |> int.to_float } *. 0.2 }
   }
 
   let y =
@@ -128,7 +131,7 @@ pub fn draw_card(card: Card, position: Vec2, context: draw.Context) -> Nil {
   context
   |> draw.rect(position, size: card_size, color: fill_color)
   |> draw.path(
-    card_vertices(position),
+    rect_vertices(position, card_size),
     width: card_size.y /. 65.0,
     color: stroke_color,
   )
@@ -136,8 +139,8 @@ pub fn draw_card(card: Card, position: Vec2, context: draw.Context) -> Nil {
     card_text,
     card_text_position(card, position, card_text, text_size),
     size: text_size,
-    weight: 900.0,
-    font: "Verdana",
+    weight: 700.0,
+    font: "Arima",
     tilt: 0.0,
     color: stroke_color,
   )
@@ -292,6 +295,49 @@ pub fn draw_minor_arcana_foundation(
 
   use #(card, x) <- list.each(list.zip(cards, card_positions))
   draw_card(card, position |> vec2.set_x(x), context)
+}
+
+pub fn new_game_button_position() -> Vec2 {
+  let x = { last_major_arcana_x() +. undo_button_position().x } /. 2.0
+  Vec2(x, foundations_y())
+}
+
+pub fn new_game_button_size() -> Vec2 {
+  let text_size = text_size()
+  Vec2(text_size *. 4.0, text_size *. 2.5)
+}
+
+pub fn draw_new_game_button(position: Vec2, context: draw.Context) -> Nil {
+  let size = text_size()
+
+  let assert Ok(color) = color.from_hex("#eea96b")
+
+  context
+  |> draw.path(
+    rect_vertices(position, new_game_button_size()),
+    width: 3.0,
+    color:,
+  )
+  |> draw.text(
+    text: "New",
+    pos: position |> vec2.add_y(size *. 0.2),
+    size:,
+    tilt: 0.0,
+    font: "Arima",
+    weight: 600.0,
+    color:,
+  )
+  |> draw.text(
+    text: "game",
+    pos: position |> vec2.subtract_y(size *. 0.8),
+    size:,
+    tilt: 0.0,
+    font: "Arima",
+    weight: 600.0,
+    color:,
+  )
+
+  Nil
 }
 
 pub fn undo_button_position() -> Vec2 {
