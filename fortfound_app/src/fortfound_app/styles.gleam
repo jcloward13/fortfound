@@ -13,6 +13,11 @@ import kitten/draw
 import kitten/math
 import kitten/vec2.{type Vec2, Vec2}
 
+pub fn background_color() -> color.Color {
+  let assert Ok(color) = color.from_hex("#302017")
+  color
+}
+
 pub const card_size = Vec2(150.0, 260.0)
 
 fn vertical_card_spacing() -> Float {
@@ -38,7 +43,7 @@ fn rect_vertices(position: Vec2, size: Vec2) -> List(Vec2) {
   // Repeat second so that first corner looks pointy as well.
 }
 
-pub fn draw_slot(position: Vec2, context: draw.Context) -> Nil {
+pub fn draw_slot(context: draw.Context, position: Vec2) -> draw.Context {
   let assert Ok(stroke_color) = color.from_hex("#8d693b")
 
   context
@@ -47,7 +52,6 @@ pub fn draw_slot(position: Vec2, context: draw.Context) -> Nil {
     width: 3.0,
     color: stroke_color,
   )
-  Nil
 }
 
 fn suit_color(suit: Suit) -> String {
@@ -110,7 +114,11 @@ fn card_text_position(
   Vec2(x, y)
 }
 
-pub fn draw_card(card: Card, position: Vec2, context: draw.Context) -> Nil {
+pub fn draw_card(
+  context: draw.Context,
+  card: Card,
+  position: Vec2,
+) -> draw.Context {
   let assert Ok(fill_color) =
     case card {
       MajorArcana(_) -> "#282523"
@@ -144,7 +152,6 @@ pub fn draw_card(card: Card, position: Vec2, context: draw.Context) -> Nil {
     tilt: 0.0,
     color: stroke_color,
   )
-  Nil
 }
 
 pub fn tableau_card_position(
@@ -180,10 +187,10 @@ pub fn major_arcana_foundation_size() -> Vec2 {
 }
 
 pub fn draw_major_arcana_foundation(
+  context: draw.Context,
   foundation: MajorArcanaFoundation,
   position: Vec2,
-  context: draw.Context,
-) -> Nil {
+) -> draw.Context {
   let first_x = first_major_arcana_x()
   let last_x = last_major_arcana_x()
   let spacing = { last_x -. first_x } /. 22.0
@@ -193,11 +200,11 @@ pub fn draw_major_arcana_foundation(
       {
         use value, index <- list.index_map(list.range(0, low))
         let x = first_x +. { spacing *. int.to_float(index) }
-        draw_card(MajorArcana(value), position |> vec2.set_x(x), context)
+        context |> draw_card(MajorArcana(value), position |> vec2.set_x(x))
       }
-      Nil
+      context
     }
-    _ -> draw_slot(position |> vec2.set_x(first_x), context)
+    _ -> context |> draw_slot(position |> vec2.set_x(first_x))
   }
 
   case foundation.high {
@@ -205,14 +212,12 @@ pub fn draw_major_arcana_foundation(
       {
         use value, index <- list.index_map(list.range(21, high))
         let x = last_x -. { spacing *. int.to_float(index) }
-        draw_card(MajorArcana(value), position |> vec2.set_x(x), context)
+        context |> draw_card(MajorArcana(value), position |> vec2.set_x(x))
       }
-      Nil
+      context
     }
-    _ -> draw_slot(position |> vec2.set_x(last_x), context)
+    _ -> context |> draw_slot(position |> vec2.set_x(last_x))
   }
-
-  Nil
 }
 
 fn minor_arcana_foundation_xs() -> List(Float) {
@@ -245,46 +250,38 @@ pub fn minor_arcana_foundation_size() -> Vec2 {
 }
 
 pub fn draw_rotated_card(
+  context: draw.Context,
   card: Card,
   position: Vec2,
   degrees: Float,
-  context: draw.Context,
-) -> Nil {
+) -> draw.Context {
   let angle = math.deg_to_rad(degrees)
 
   context
   |> draw.set_camera_angle(angle)
-  |> draw_card(card, position |> vec2.rotate_left, _)
-
-  context
+  |> draw_card(card, position |> vec2.rotate_left)
   |> draw.set_camera_angle(angle *. -1.0)
-
-  Nil
 }
 
 pub fn draw_scaled_card(
+  context: draw.Context,
   card: Card,
   position: Vec2,
   scale: Float,
-  context: draw.Context,
-) -> Nil {
+) -> draw.Context {
   context
   |> draw.set_camera_pos(vec2.invert(position))
   |> draw.set_camera_scale(scale)
-  |> draw_card(card, Vec2(0.0, 0.0), _)
-
-  context
+  |> draw_card(card, Vec2(0.0, 0.0))
   |> draw.set_camera_scale(1.0 /. scale)
   |> draw.set_camera_pos(position)
-
-  Nil
 }
 
 pub fn draw_minor_arcana_foundation(
+  context: draw.Context,
   foundation: MinorArcanaFoundation,
   position: Vec2,
-  context: draw.Context,
-) -> Nil {
+) -> draw.Context {
   let cards = [
     MinorArcana(Clubs, foundation.clubs),
     MinorArcana(Coins, foundation.coins),
@@ -293,8 +290,32 @@ pub fn draw_minor_arcana_foundation(
   ]
   let card_positions = minor_arcana_foundation_xs()
 
-  use #(card, x) <- list.each(list.zip(cards, card_positions))
-  draw_card(card, position |> vec2.set_x(x), context)
+  {
+    use #(card, x) <- list.each(list.zip(cards, card_positions))
+    context |> draw_card(card, position |> vec2.set_x(x))
+  }
+  context
+}
+
+pub fn button_size() -> Vec2 {
+  let text_size = text_size()
+  Vec2(text_size *. 4.8, text_size *. 2.5)
+}
+
+fn button_stroke_color() -> color.Color {
+  let assert Ok(color) = color.from_hex("#eea96b")
+  color
+}
+
+fn draw_button(context: draw.Context, position: Vec2) -> draw.Context {
+  let size = button_size()
+  context
+  |> draw.path(
+    rect_vertices(position, size),
+    width: 5.0,
+    color: button_stroke_color(),
+  )
+  |> draw.rect(pos: position, size:, color: background_color())
 }
 
 pub fn new_game_button_position() -> Vec2 {
@@ -302,22 +323,15 @@ pub fn new_game_button_position() -> Vec2 {
   Vec2(x, foundations_y())
 }
 
-pub fn new_game_button_size() -> Vec2 {
-  let text_size = text_size()
-  Vec2(text_size *. 4.0, text_size *. 2.5)
-}
-
-pub fn draw_new_game_button(position: Vec2, context: draw.Context) -> Nil {
+pub fn draw_new_game_button(
+  context: draw.Context,
+  position: Vec2,
+) -> draw.Context {
   let size = text_size()
-
-  let assert Ok(color) = color.from_hex("#eea96b")
+  let text_color = button_stroke_color()
 
   context
-  |> draw.path(
-    rect_vertices(position, new_game_button_size()),
-    width: 3.0,
-    color:,
-  )
+  |> draw_button(position)
   |> draw.text(
     text: "New",
     pos: position |> vec2.add_y(size *. 0.2),
@@ -325,7 +339,7 @@ pub fn draw_new_game_button(position: Vec2, context: draw.Context) -> Nil {
     tilt: 0.0,
     font: "Arima",
     weight: 600.0,
-    color:,
+    color: text_color,
   )
   |> draw.text(
     text: "game",
@@ -334,10 +348,8 @@ pub fn draw_new_game_button(position: Vec2, context: draw.Context) -> Nil {
     tilt: 0.0,
     font: "Arima",
     weight: 600.0,
-    color:,
+    color: text_color,
   )
-
-  Nil
 }
 
 pub fn undo_button_position() -> Vec2 {
@@ -355,9 +367,60 @@ pub fn undo_button_size() -> Vec2 {
 }
 
 pub fn draw_undo_button(
+  context: draw.Context,
   moved_card: Card,
   position: Vec2,
+) -> draw.Context {
+  let size = text_size()
+  let text_color = button_stroke_color()
+
+  context
+  |> draw_scaled_card(moved_card, position, undo_button_card_scale)
+  |> draw_button(position)
+  |> draw.text(
+    text: "Undo",
+    pos: position |> vec2.subtract_y(size *. 0.3),
+    size:,
+    tilt: 0.0,
+    font: "Arima",
+    weight: 600.0,
+    color: text_color,
+  )
+}
+
+pub fn daily_challenge_button_position() -> Vec2 {
+  let assert Ok(first_minor_arcana_foundation_x) =
+    list.first(minor_arcana_foundation_xs())
+
+  let x = { undo_button_position().x +. first_minor_arcana_foundation_x } /. 2.0
+  Vec2(x, foundations_y())
+}
+
+pub fn draw_daily_challenge_button(
   context: draw.Context,
-) -> Nil {
-  draw_scaled_card(moved_card, position, undo_button_card_scale, context)
+  position: Vec2,
+) -> draw.Context {
+  let size = text_size()
+  let text_color = button_stroke_color()
+
+  context
+  |> draw_button(position)
+  |> draw.text(
+    text: "Daily",
+    pos: position |> vec2.add_y(size *. 0.2),
+    size:,
+    tilt: 0.0,
+    font: "Arima",
+    weight: 600.0,
+    color: text_color,
+  )
+  |> draw.text(
+    text: "challenge",
+    pos: position |> vec2.subtract_y(size *. 0.8),
+    size:,
+    tilt: 0.0,
+    font: "Arima",
+    weight: 600.0,
+    color: text_color,
+  )
 }

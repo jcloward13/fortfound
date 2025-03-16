@@ -4,10 +4,11 @@ import fortfound_core/game.{game_from_seed, try_make_move}
 import fortfound_core/model.{
   type Card, type Game, type Location, type MajorArcanaFoundation,
   type MinorArcanaFoundation, type Move, BlockingMinorArcanaFoundation, Clubs,
-  Coins, Column, Cups, Game, MajorArcana, MajorArcanaFoundation, MinorArcana,
-  MinorArcanaFoundation, Move, NewGameButton, Swords, UndoButton,
+  Coins, Column, Cups, DailyChallengeButton, Game, MajorArcana,
+  MajorArcanaFoundation, MinorArcana, MinorArcanaFoundation, Move, NewGameButton,
+  Swords, UndoButton,
 }
-import fortfound_core/rng
+import fortfound_core/rng.{type Seed}
 import fortfound_core/scenarios
 import gleam/dict
 import gleam/int
@@ -42,16 +43,24 @@ pub fn init() -> Game {
   }
 }
 
-fn start_new_game() -> Game {
-  let seed = scenarios.random_winnable_scenario()
+fn start_game(seed: Seed) -> Game {
   let encoded_seed = rng.encode_seed(seed)
   window.set_location(window.self(), "?seed=" <> encoded_seed)
   game_from_seed(seed)
 }
 
+fn start_new_game() -> Game {
+  start_game(scenarios.random_winnable_scenario())
+}
+
+fn start_daily_challenge() -> Game {
+  start_game(scenarios.current_daily_scenario())
+}
+
 pub fn update(game: Game, event: engine.Event(Location)) -> Game {
   case event {
     engine.Clicked(NewGameButton) -> start_new_game()
+    engine.Clicked(DailyChallengeButton) -> start_daily_challenge()
 
     engine.Clicked(UndoButton) -> {
       case game.previous_state {
@@ -89,7 +98,7 @@ fn view_slot(column_index: Int, targettable: Bool) -> engine.Object(Location) {
     loc: Some(Column(column_index)),
     position: styles.tableau_card_position(column_index:, card_index: 0),
     size: styles.card_size,
-    draw: fn(obj, context) { styles.draw_slot(obj.position, context) },
+    draw: fn(obj, context) { context |> styles.draw_slot(obj.position) },
     clickable: False,
     draggable: False,
     targettable:,
@@ -120,7 +129,7 @@ fn view_cards(
     loc: Some(Column(column_index)),
     position: styles.tableau_card_position(column_index:, card_index:),
     size: styles.card_size,
-    draw: fn(obj, context) { styles.draw_card(card, obj.position, context) },
+    draw: fn(obj, context) { context |> styles.draw_card(card, obj.position) },
     clickable: card_index == last_card_index,
     draggable: card_index == last_card_index,
     targettable: card_index == last_card_index,
@@ -147,7 +156,7 @@ fn view_major_arcana_foundation(
     position: styles.major_arcana_foundation_position(),
     size: styles.card_size,
     draw: fn(obj, context) {
-      styles.draw_major_arcana_foundation(foundation, obj.position, context)
+      context |> styles.draw_major_arcana_foundation(foundation, obj.position)
     },
     clickable: False,
     draggable: False,
@@ -167,7 +176,7 @@ fn view_minor_arcana_foundation(
       position:,
       size: styles.minor_arcana_foundation_size(),
       draw: fn(obj, context) {
-        styles.draw_minor_arcana_foundation(foundation, obj.position, context)
+        context |> styles.draw_minor_arcana_foundation(foundation, obj.position)
       },
       clickable: False,
       draggable: False,
@@ -182,7 +191,7 @@ fn view_minor_arcana_foundation(
       position:,
       size: Vec2(x: styles.card_size.y, y: styles.card_size.x),
       draw: fn(obj, context) {
-        styles.draw_rotated_card(card, obj.position, -90.0, context)
+        context |> styles.draw_rotated_card(card, obj.position, -90.0)
       },
       clickable: False,
       draggable: True,
@@ -201,9 +210,9 @@ pub fn view_new_game_button() -> engine.Object(Location) {
     name: "new game",
     loc: Some(NewGameButton),
     position: styles.new_game_button_position(),
-    size: styles.new_game_button_size(),
+    size: styles.button_size(),
     draw: fn(obj, context) {
-      styles.draw_new_game_button(obj.position, context)
+      context |> styles.draw_new_game_button(obj.position)
     },
     clickable: True,
     draggable: False,
@@ -218,7 +227,22 @@ fn view_undo_button(moved_card: Card) -> engine.Object(Location) {
     position: styles.undo_button_position(),
     size: styles.undo_button_size(),
     draw: fn(obj, context) {
-      styles.draw_undo_button(moved_card, obj.position, context)
+      context |> styles.draw_undo_button(moved_card, obj.position)
+    },
+    clickable: True,
+    draggable: False,
+    targettable: False,
+  )
+}
+
+pub fn view_daily_challenge_button() -> engine.Object(Location) {
+  engine.Object(
+    name: "daily challenge",
+    loc: Some(DailyChallengeButton),
+    position: styles.daily_challenge_button_position(),
+    size: styles.button_size(),
+    draw: fn(obj, context) {
+      context |> styles.draw_daily_challenge_button(obj.position)
     },
     clickable: True,
     draggable: False,
@@ -234,6 +258,7 @@ pub fn view(game: Game) -> List(engine.Object(Location)) {
   |> list.flat_map(view_column)
   |> list.append([
     view_new_game_button(),
+    view_daily_challenge_button(),
     view_major_arcana_foundation(state.major_arcana_foundation),
     ..view_minor_arcana_foundation(state.minor_arcana_foundation)
   ])

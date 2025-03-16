@@ -10,3 +10,4 @@ dev-dependencies = { startest = ">= 0.6.0 and < 1.0.0" }
 gleam_stdlib = ">= 0.56.0 and < 1.0.0"
 gleam_otp = ">= 0.16.1 and < 1.0.0"
 prng = ">= 4.0.1 and < 5.0.0"
+gleam_time = ">= 1.0.0 and < 2.0.0"

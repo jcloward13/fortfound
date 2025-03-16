@@ -16,7 +16,7 @@ pub type Object(loc) {
     loc: Option(loc),
     position: Vec2,
     size: Vec2,
-    draw: fn(Object(loc), draw.Context) -> Nil,
+    draw: fn(Object(loc), draw.Context) -> draw.Context,
     clickable: Bool,
     draggable: Bool,
     targettable: Bool,
@@ -229,7 +229,7 @@ fn view(state: State(game, loc)) -> Nil {
 
   case state.dragged_object {
     Some(DraggedObject(object, ..)) -> object.draw(object, context)
-    None -> Nil
+    None -> context
   }
 
   Nil

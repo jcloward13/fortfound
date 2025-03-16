@@ -3,9 +3,14 @@ import fortfound_core/model.{
 }
 import fortfound_core/rng.{type Seed}
 import gleam/dict
+import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
+import gleam/result
+import gleam/time/timestamp
+import prng/random
+import prng/seed
 
 pub fn won_example() -> State {
   State(
@@ -99,5 +104,27 @@ pub fn random_winnable_scenario() -> Seed {
     |> list.first
 
   let assert Ok(seed) = rng.decode_seed(encoded_seed)
+  seed
+}
+
+pub fn current_daily_scenario() -> Seed {
+  let seconds_in_day = 60 * 60 * 24
+
+  let assert Ok(unix_day) =
+    timestamp.system_time()
+    |> timestamp.to_unix_seconds
+    |> float.round
+    |> int.divide(seconds_in_day)
+
+  let index =
+    random.int(0, list.length(winnable_seeds) - 1)
+    |> random.sample(seed.new(unix_day))
+
+  let assert Ok(seed) =
+    winnable_seeds
+    |> list.drop(index)
+    |> list.first
+    |> result.then(rng.decode_seed)
+
   seed
 }

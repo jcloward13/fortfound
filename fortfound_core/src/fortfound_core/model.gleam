@@ -61,6 +61,7 @@ pub type Location {
   BlockingMinorArcanaFoundation
   UndoButton
   NewGameButton
+  DailyChallengeButton
 }
 
 pub type Move {
