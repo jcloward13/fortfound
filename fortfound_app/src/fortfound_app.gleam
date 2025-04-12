@@ -1,8 +1,11 @@
+import fortfound_app/layout.{type Layout}
+import fortfound_app/palette
 import fortfound_core/game.{empty_game, game_from_seed, get_card, make_move}
 import fortfound_core/model.{
   type Card, type Game, type Location, type MajorArcanaFoundation,
   type MinorArcanaFoundation, type Suit, BlockingMinorArcanaFoundation, Clubs,
-  Coins, Column, Cups, Game, HistoryStep, MajorArcana, MinorArcana, Move, Swords,
+  Coins, Column, Cups, Game, HistoryStep, MajorArcana, MinorArcana, Move, State,
+  Swords,
 }
 import fortfound_core/rng.{type Seed}
 import fortfound_core/scenarios
@@ -15,7 +18,6 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import gleam/uri.{type Uri}
-import gleam_community/colour.{type Colour}
 import glector.{type Vector2, Vector2}
 import lustre
 import lustre/attribute.{type Attribute, attribute as attr}
@@ -87,7 +89,7 @@ type Msg {
 }
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
-  case model, msg |> echo {
+  case model, msg {
     _, RequestedNewGame(scenario) -> {
       let seed = case scenario {
         Random -> scenarios.random_winnable_scenario()
@@ -131,9 +133,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     ),
       ReleasedCard(target: Some(target))
     -> {
-      let model = case
-        make_move(model.game, Move(source, target) |> echo) |> echo
-      {
+      let model = case make_move(model.game, Move(source, target)) {
         Ok(game) -> Model(game:, selected: None)
         _ -> Model(..model, selected: None)
       }
@@ -155,9 +155,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     ),
       Clicked(Some(target))
     -> {
-      let model = case
-        make_move(model.game, Move(source, target) |> echo) |> echo
-      {
+      let model = case make_move(model.game, Move(source, target)) {
         Ok(game) -> Model(game:, selected: None)
         _ -> Model(..model, selected: None)
       }
@@ -198,35 +196,70 @@ fn set_seed_in_uri(seed: Seed) -> Effect(Msg) {
 }
 
 fn view(model: Model) -> Element(Msg) {
-  let state = model.game.state
+  let State(
+    major_arcana_foundation: major,
+    columns:,
+    minor_arcana_foundation: minor,
+  ) = model.game.state
+
+  let layout = layout.get_layout()
 
   [
-    [
-      view_buttons(),
-      view_major_arcana_foundation(state.major_arcana_foundation),
-      view_minor_arcana_foundation(
-        state.minor_arcana_foundation,
-        model.selected,
-      ),
-      ..state.columns
-      |> dict.to_list
-      |> list.map(view_column(_, model.selected))
-    ],
-    case model.game.history {
-      [HistoryStep(moved:, ..), ..] -> [view_undo_button(moved)]
-      _ -> []
-    },
     case model.selected {
-      Some(Dragging(card:, position:, ..)) -> [
-        svg.g([attribute.style("pointer-events", "none")], [
-          view_card(card, position, card_size(), None),
-        ]),
-      ]
-      _ -> []
+      Some(Dragging(card:, position:, ..)) ->
+        view_dragged_card(card, position, layout)
+      _ -> element.none()
     },
+    view_major_arcana_foundation(major, layout),
+    view_buttons(layout),
+    case model.game.history {
+      [HistoryStep(moved:, ..), ..] -> view_undo_button(moved, layout)
+      _ -> element.none()
+    },
+    view_minor_arcana_foundation(minor, layout, model.selected),
+    ..columns
+    |> dict.to_list
+    |> list.map(view_column(_, layout, model.selected))
   ]
-  |> list.flatten
+  |> list.reverse
   |> svg(2000, 1000)
+}
+
+@external(javascript, "./fortfound_app_ffi.mjs", "screen_to_svg_percentage")
+fn screen_to_svg_percentage(vector: Vector2) -> Vector2
+
+@external(javascript, "./fortfound_app_ffi.mjs", "percentage_to_absolute")
+fn percentage_to_absolute(vector: Vector2) -> Vector2
+
+fn percentage_attribute(name: String, value: Float) -> Attribute(a) {
+  attr(name, float.to_string(value *. 100.0) <> "%")
+}
+
+type MouseEvent {
+  MouseDown
+  MouseMove
+  MouseUp
+  MouseClick
+}
+
+fn on_mouse_event(event: MouseEvent, msg: fn(Vector2) -> Msg) -> Attribute(Msg) {
+  let event_name = case event {
+    MouseDown -> "mousedown"
+    MouseMove -> "mousemove"
+    MouseUp -> "mouseup"
+    MouseClick -> "click"
+  }
+
+  event.on(
+    event_name,
+    event.mouse_position()
+      |> decode.map(fn(xy) {
+        let #(x, y) = xy
+        Vector2(x, y)
+      })
+      |> decode.map(screen_to_svg_percentage)
+      |> decode.map(msg),
+  )
 }
 
 fn svg(elements: List(Element(Msg)), width: Int, height: Int) -> Element(Msg) {
@@ -246,81 +279,15 @@ fn svg(elements: List(Element(Msg)), width: Int, height: Int) -> Element(Msg) {
         #("font-size", "1.75em"),
         #("user-select", "none"),
       ]),
-      on_event(TouchMove, MovedPointer),
-      on_event(MouseMove, MovedPointer),
-      on_event(MouseUp, fn(_) { ReleasedCard(None) }),
+      on_mouse_event(MouseMove, MovedPointer),
+      on_mouse_event(MouseUp, fn(_) { ReleasedCard(None) }),
     ],
     elements,
   )
 }
 
-fn xy_pair_to_vector(xy: #(Float, Float)) -> Vector2 {
-  let #(x, y) = xy
-  Vector2(x, y)
-}
-
-@external(javascript, "./fortfound_app_ffi.mjs", "screen_to_svg_percentage")
-fn screen_to_svg_percentage(vector: Vector2) -> Vector2
-
-@external(javascript, "./fortfound_app_ffi.mjs", "percentage_to_absolute")
-fn percentage_to_absolute(vector: Vector2) -> Vector2
-
-type Event {
-  TouchStart
-  TouchMove
-  TouchEnd
-  MouseDown
-  MouseMove
-  MouseUp
-  Click
-}
-
-fn on_event(event: Event, msg: fn(Vector2) -> Msg) -> Attribute(Msg) {
-  let touch_decoder = decode.at(["touches", "0"], event.mouse_position())
-  let mouse_decoder = event.mouse_position()
-
-  let #(event_name, base_decoder) = case event {
-    TouchStart -> #("touchstart", touch_decoder)
-    TouchMove -> #("touchmove", touch_decoder)
-    TouchEnd -> #("touchend", touch_decoder)
-    MouseDown -> #("mousedown", mouse_decoder)
-    MouseMove -> #("mousemove", mouse_decoder)
-    MouseUp -> #("mouseup", mouse_decoder)
-    Click -> #("click", mouse_decoder)
-  }
-
-  event.on(
-    event_name,
-    base_decoder
-      |> decode.map(xy_pair_to_vector)
-      |> decode.map(screen_to_svg_percentage)
-      |> decode.map(msg),
-  )
-}
-
-fn card_stroke(card: Card) -> Colour {
-  let assert Ok(colour) =
-    case card {
-      MajorArcana(_) -> "#eea96b"
-      MinorArcana(Clubs, _) -> "#497327"
-      MinorArcana(Coins, _) -> "#956f3f"
-      MinorArcana(Cups, _) -> "#963728"
-      MinorArcana(Swords, _) -> "#326973"
-    }
-    |> colour.from_rgb_hex_string
-
-  colour
-}
-
-fn card_fill(card: Card) -> Colour {
-  let assert Ok(colour) =
-    case card {
-      MajorArcana(_) -> "#282523"
-      MinorArcana(..) -> "#f8e3c1"
-    }
-    |> colour.from_rgb_hex_string
-
-  colour
+fn stroke_width() -> Float {
+  3.5
 }
 
 fn suit_icon(suit: Suit) -> String {
@@ -347,93 +314,179 @@ fn card_text(card: Card) -> String {
   }
 }
 
-fn stroke_width() -> Float {
-  3.5
+fn view_card(
+  card card: Card,
+  position position: Vector2,
+  scale scale: Float,
+  layout layout: Layout,
+  loc loc: Option(Location),
+) -> Element(Msg) {
+  let size = layout.card_size |> glector.scale(scale)
+
+  let #(text_x, text_anchor, text_dx) = case card {
+    MajorArcana(_) -> #(position.x +. size.x /. 2.0, "middle", 0.0)
+    MinorArcana(..) -> #(position.x, "start", layout.card_padding)
+  }
+
+  let fill_color = palette.card_fill(card)
+  let main_color = palette.card_stroke(card)
+
+  let rect =
+    svg.rect([
+      percentage_attribute("x", position.x),
+      percentage_attribute("y", position.y),
+      percentage_attribute("width", size.x),
+      percentage_attribute("height", size.y),
+      attr("rx", "5"),
+      attr("ry", "5"),
+      attr("fill", fill_color),
+      attr("stroke", main_color),
+      attr("stroke-width", float.to_string(stroke_width())),
+    ])
+
+  let text =
+    svg.text(
+      [
+        percentage_attribute("x", text_x),
+        percentage_attribute("y", position.y),
+        percentage_attribute("dx", text_dx),
+        percentage_attribute("dy", layout.card_padding),
+        attr("text-anchor", text_anchor),
+        attr("dominant-baseline", "hanging"),
+        attr("fill", main_color),
+      ],
+      card_text(card),
+    )
+
+  svg.g(
+    case loc {
+      Some(loc) -> [
+        on_mouse_event(MouseDown, fn(mouse_pos) {
+          GrabbedCard(
+            source: loc,
+            position:,
+            pointer_offset: glector.subtract(position, mouse_pos),
+          )
+        }),
+        on_mouse_event(MouseUp, fn(_) { ReleasedCard(target: Some(loc)) }),
+        on_mouse_event(MouseClick, fn(_) { Clicked(Some(loc)) }),
+      ]
+      _ -> []
+    },
+    [rect, text],
+  )
 }
 
-fn origin_to_center(origin: Vector2, size: Vector2) -> Vector2 {
-  glector.add(origin, glector.scale(size, 0.5))
+fn view_dragged_card(
+  card: Card,
+  position: Vector2,
+  layout: Layout,
+) -> Element(Msg) {
+  svg.g([attribute.style("pointer-events", "none")], [
+    view_card(card, position, 1.0, layout, None),
+  ])
 }
 
-fn center_to_origin(center: Vector2, size: Vector2) -> Vector2 {
-  glector.subtract(center, glector.scale(size, 0.5))
+fn view_slot(
+  position: Vector2,
+  layout: Layout,
+  target: Option(Location),
+) -> Element(Msg) {
+  svg.rect(
+    [
+      percentage_attribute("x", position.x),
+      percentage_attribute("y", position.y),
+      percentage_attribute("width", layout.card_size.x),
+      percentage_attribute("height", layout.card_size.y),
+      attr("rx", "5"),
+      attr("ry", "5"),
+      attr("fill", palette.slot_fill),
+      attr("stroke", palette.slot_stroke),
+      attr("stroke-width", float.to_string(stroke_width())),
+    ]
+    |> list.append(case target {
+      Some(loc) -> [
+        on_mouse_event(MouseUp, fn(_) { ReleasedCard(target: Some(loc)) }),
+        on_mouse_event(MouseClick, fn(_) { Clicked(Some(loc)) }),
+      ]
+      None -> []
+    }),
+  )
 }
 
-fn percentage_attribute(name: String, value: Float) -> Attribute(Msg) {
-  attr(name, float.to_string(value *. 100.0) <> "%")
+fn view_button(
+  text: String,
+  position: Vector2,
+  size: Vector2,
+  msg: Msg,
+) -> Element(Msg) {
+  let text_x = position.x +. size.x /. 2.0
+  let text_y = position.y +. size.y /. 2.0
+
+  svg.g([attr("cursor", "pointer"), on_mouse_event(MouseDown, fn(_) { msg })], [
+    svg.rect([
+      percentage_attribute("x", position.x),
+      percentage_attribute("y", position.y),
+      percentage_attribute("width", size.x),
+      percentage_attribute("height", size.y),
+      attr("rx", "5"),
+      attr("ry", "5"),
+      attr("fill", palette.button_fill),
+    ]),
+    svg.text(
+      [
+        percentage_attribute("x", text_x),
+        percentage_attribute("y", text_y),
+        attr("text-anchor", "middle"),
+        attr("dominant-baseline", "middle"),
+        attr("fill", palette.button_text),
+      ],
+      text,
+    ),
+  ])
 }
 
-fn card_size() -> Vector2 {
-  let width = 1.0 /. 13.0
-  let height = 0.24
-  Vector2(x: width, y: height)
+fn view_buttons(layout: Layout) -> Element(Msg) {
+  let buttons = {
+    let specs =
+      [
+        #("New game", RequestedNewGame(Random)),
+        #("Restart", PressedRestart),
+        #("Daily", RequestedNewGame(Daily)),
+        #("Help", PressedHelp),
+      ]
+      |> list.zip(layout.button_positions(layout))
+
+    use #(#(text, msg), position) <- list.map(specs)
+    view_button(text, position, layout.button_size, msg)
+  }
+
+  svg.g([], buttons)
 }
 
-fn margin() -> Vector2 {
-  Vector2(0.02, 0.02)
-}
+fn view_undo_button(card: Card, layout: Layout) -> Element(Msg) {
+  let card_scale = 0.7
+  let button_size = layout.button_size |> glector.scale(0.8)
 
-fn foundations_y() -> Float {
-  margin().y
-}
+  let center =
+    Vector2(layout.column_x(5, layout), layout.foundations_y)
+    |> layout.origin_to_center(layout.card_size)
 
-fn foundations_height() -> Float {
-  card_size().y
-}
+  let card_position =
+    layout.center_to_origin(center, glector.scale(layout.card_size, card_scale))
+  let button_position = layout.center_to_origin(center, button_size)
 
-fn stacked_card_offset() -> Float {
-  card_size().y /. 6.0
-}
-
-fn card_padding() -> Float {
-  stacked_card_offset() /. 6.0
-}
-
-fn tableau_width() -> Float {
-  1.0 -. 2.0 *. margin().x
-}
-
-fn column_x(column: Int) -> Float {
-  let card_size = card_size()
-  let margin = margin()
-  let tableau_width = tableau_width()
-
-  let cards_total_width = card_size.x *. 11.0
-  let card_margin = { tableau_width -. cards_total_width } /. 10.0
-
-  margin.x +. { card_margin +. card_size.x } *. int.to_float(column)
-}
-
-fn major_arcana_foundation_xs() -> List(Float) {
-  let first = column_x(0)
-  let last = column_x(3)
-  let offset = { last -. first } /. 21.0
-
-  list.range(0, 21)
-  |> list.map(int.to_float)
-  |> list.map(fn(i) { first +. offset *. i })
-}
-
-fn minor_arcana_foundation_xs() -> List(Float) {
-  list.range(7, 10) |> list.map(column_x)
-}
-
-fn tableau_start() -> Vector2 {
-  let y = foundations_y() +. foundations_height() +. margin().y *. 2.0
-  Vector2(0.0, y)
-}
-
-fn tableau_card_y(row: Int) -> Float {
-  let offset = stacked_card_offset()
-  tableau_start().y +. offset *. int.to_float(row)
+  svg.g([], [
+    view_card(card, card_position, scale: card_scale, layout:, loc: None),
+    view_button("Undo", button_position, button_size, UndoMove),
+  ])
 }
 
 fn view_major_arcana_foundation(
   foundation: MajorArcanaFoundation,
+  layout: Layout,
 ) -> Element(Msg) {
-  let foundations_y = foundations_y()
-  let column_xs = major_arcana_foundation_xs()
-  let card_size = card_size()
+  let column_xs = layout.major_arcana_foundation_xs(layout)
 
   let lows = case foundation.low {
     Some(low) -> {
@@ -442,14 +495,14 @@ fn view_major_arcana_foundation(
       |> list.zip(column_xs)
       |> list.map(fn(card_and_x) {
         let #(card, x) = card_and_x
-        let position = Vector2(x, foundations_y)
-        view_card(card, position, card_size, None)
+        let position = Vector2(x, layout.foundations_y)
+        view_card(card:, position:, scale: 1.0, layout:, loc: None)
       })
     }
     None -> {
       let assert Ok(x) = list.first(column_xs)
-      let position = Vector2(x, foundations_y)
-      [view_slot(position, card_size, None)]
+      let position = Vector2(x, layout.foundations_y)
+      [view_slot(position, layout, None)]
     }
   }
 
@@ -460,14 +513,14 @@ fn view_major_arcana_foundation(
       |> list.zip(list.reverse(column_xs))
       |> list.map(fn(card_and_x) {
         let #(card, x) = card_and_x
-        let position = Vector2(x, foundations_y)
-        view_card(card, position, card_size, None)
+        let position = Vector2(x, layout.foundations_y)
+        view_card(card:, position:, scale: 1.0, layout:, loc: None)
       })
     }
     None -> {
       let assert Ok(x) = list.last(column_xs)
-      let position = Vector2(x, foundations_y)
-      [view_slot(position, card_size, None)]
+      let position = Vector2(x, layout.foundations_y)
+      [view_slot(position, layout, None)]
     }
   }
 
@@ -476,11 +529,10 @@ fn view_major_arcana_foundation(
 
 fn view_minor_arcana_foundation(
   foundation: MinorArcanaFoundation,
+  layout: Layout,
   selected: Option(SelectedCard),
 ) -> Element(Msg) {
-  let foundations_y = foundations_y()
-  let column_xs = minor_arcana_foundation_xs()
-  let card_size = card_size()
+  let column_xs = layout.minor_arcana_foundation_xs(layout)
 
   let cards = [
     MinorArcana(Clubs, foundation.clubs),
@@ -490,13 +542,13 @@ fn view_minor_arcana_foundation(
   ]
 
   let center =
-    Vector2(float.sum(column_xs) /. 4.0, foundations_y)
-    |> glector.add(glector.scale(card_size, 0.5))
+    Vector2(float.sum(column_xs) /. 4.0, layout.foundations_y)
+    |> glector.add(glector.scale(layout.card_size, 0.5))
 
   let blocker = case foundation.blocker, selected {
     Some(blocker), Some(Dragging(card: dragging, ..)) if blocker == dragging ->
       element.none()
-    Some(blocker), _ -> view_blocker(blocker, center)
+    Some(blocker), _ -> view_blocker(blocker, center, layout)
     _, _ -> element.none()
   }
 
@@ -505,27 +557,36 @@ fn view_minor_arcana_foundation(
     |> list.zip(column_xs)
     |> list.map(fn(card_and_x) {
       let #(card, x) = card_and_x
-      let position = Vector2(x, foundations_y)
-      view_card(card, position, card_size, None)
+      let position = Vector2(x, layout.foundations_y)
+      view_card(card:, position:, scale: 1.0, layout:, loc: None)
     })
 
   let elements = list.reverse([blocker, ..foundation_cards])
 
   let loc = Some(BlockingMinorArcanaFoundation)
   let events = [
-    on_event(MouseUp, fn(_) { ReleasedCard(target: loc) }),
-    on_event(Click, fn(_) { Clicked(loc) }),
+    on_mouse_event(MouseUp, fn(_) { ReleasedCard(target: loc) }),
+    on_mouse_event(MouseClick, fn(_) { Clicked(loc) }),
   ]
 
   svg.g(events, elements)
 }
 
-fn view_blocker(card: Card, foundation_center: Vector2) -> Element(Msg) {
-  let card_size = card_size()
-  let position = center_to_origin(foundation_center, card_size)
+fn view_blocker(
+  card: Card,
+  foundation_center: Vector2,
+  layout: Layout,
+) -> Element(Msg) {
+  let position = layout.center_to_origin(foundation_center, layout.card_size)
 
   svg.g([rotate(foundation_center, 90.0)], [
-    view_card(card, position, card_size, Some(BlockingMinorArcanaFoundation)),
+    view_card(
+      card:,
+      position:,
+      scale: 1.0,
+      layout:,
+      loc: Some(BlockingMinorArcanaFoundation),
+    ),
   ])
 }
 
@@ -541,212 +602,36 @@ fn rotate(position: Vector2, degrees: Float) -> Attribute(Msg) {
 
 fn view_column(
   column: #(Int, List(Card)),
+  layout: Layout,
   selected: Option(SelectedCard),
 ) -> Element(Msg) {
   let #(column_index, cards) = column
-  let x = column_x(column_index)
-  let card_size = card_size()
 
-  let loc = Column(column_index)
+  let x = layout.column_x(column_index, layout)
+  let loc = Some(Column(column_index))
 
-  [
-    view_slot(Vector2(x, tableau_start().y), card_size, Some(loc)),
-    ..cards
+  let slot = view_slot(Vector2(x, layout.tableau_start.y), layout, loc)
+
+  let cards =
+    cards
     |> list.reverse
-    |> list.index_map(fn(card, row) { #(card, Vector2(x, tableau_card_y(row))) })
-    |> list.filter_map(fn(card_and_position) {
-      let #(card, position) = card_and_position
+    |> list.index_map(fn(card, row) {
+      let y = layout.tableau_card_y(row, layout)
       let position = case selected {
         Some(Dragging(card: dragging, ..)) if card == dragging -> Error(Nil)
-        Some(Highlighted(card: highlighted, ..)) if card == highlighted ->
-          Ok(position |> glector.add(Vector2(0.0, stacked_card_offset())))
-        _ -> Ok(position)
+        Some(Highlighted(card: highlighted, ..)) if card == highlighted -> {
+          let offset = Vector2(0.0, layout.stacked_card_y_offset)
+          Ok(Vector2(x, y) |> glector.add(offset))
+        }
+        _ -> Ok(Vector2(x, y))
       }
-
-      position
-      |> result.map(view_card(card, _, card_size, Some(loc)))
+      #(card, position)
     })
-  ]
-  |> svg.g([], _)
-}
+    |> list.filter_map(fn(card_and_position) {
+      let #(card, position) = card_and_position
+      use position <- result.map(position)
+      view_card(card:, position:, scale: 1.0, layout:, loc:)
+    })
 
-fn view_card(
-  card: Card,
-  position: Vector2,
-  size: Vector2,
-  loc: Option(Location),
-) -> Element(Msg) {
-  let padding = card_padding()
-
-  let #(text_x, text_anchor, text_dx) = case card {
-    MajorArcana(_) -> #(position.x +. size.x /. 2.0, "middle", 0.0)
-    MinorArcana(..) -> #(position.x, "start", padding)
-  }
-
-  let fill = "#" <> colour.to_rgb_hex_string(card_fill(card))
-  let stroke = "#" <> colour.to_rgb_hex_string(card_stroke(card))
-  let text_color = stroke
-
-  let rect =
-    svg.rect([
-      percentage_attribute("x", position.x),
-      percentage_attribute("y", position.y),
-      percentage_attribute("width", size.x),
-      percentage_attribute("height", size.y),
-      attr("rx", "5"),
-      attr("ry", "5"),
-      attr("fill", fill),
-      attr("stroke", stroke),
-      attr("stroke-width", float.to_string(stroke_width())),
-    ])
-
-  let text =
-    svg.text(
-      [
-        percentage_attribute("x", text_x),
-        percentage_attribute("y", position.y),
-        percentage_attribute("dx", text_dx),
-        percentage_attribute("dy", padding),
-        attr("text-anchor", text_anchor),
-        attr("dominant-baseline", "hanging"),
-        attr("fill", text_color),
-      ],
-      card_text(card),
-    )
-
-  svg.g(
-    case loc {
-      Some(loc) -> [
-        on_event(MouseDown, fn(mouse_pos) {
-          GrabbedCard(
-            source: loc,
-            position:,
-            pointer_offset: glector.subtract(position, mouse_pos),
-          )
-        }),
-        on_event(MouseUp, fn(_) { ReleasedCard(target: Some(loc)) }),
-        on_event(Click, fn(_) { Clicked(Some(loc)) }),
-      ]
-      _ -> []
-    },
-    [rect, text],
-  )
-}
-
-fn view_slot(
-  position: Vector2,
-  size: Vector2,
-  target: Option(Location),
-) -> Element(Msg) {
-  svg.rect(
-    [
-      percentage_attribute("x", position.x),
-      percentage_attribute("y", position.y),
-      percentage_attribute("width", size.x),
-      percentage_attribute("height", size.y),
-      attr("rx", "5"),
-      attr("ry", "5"),
-      // Must be transparent instead of 'none' otherwise events won't trigger.
-      attr("fill", "#00000000"),
-      attr("stroke", "#8d693b"),
-      attr("stroke-width", float.to_string(stroke_width())),
-    ]
-    |> list.append(case target {
-      Some(loc) -> [
-        on_event(MouseUp, fn(_) { ReleasedCard(target: Some(loc)) }),
-        on_event(Click, fn(_) { Clicked(Some(loc)) }),
-      ]
-      None -> []
-    }),
-  )
-}
-
-fn button_size() -> Vector2 {
-  let card_size = card_size()
-  let width = card_size.x
-  let height = card_size.y /. 2.0 -. margin().y /. 2.0
-  Vector2(x: width, y: height)
-}
-
-fn view_button(
-  text: String,
-  position: Vector2,
-  size: Vector2,
-  msg: Msg,
-) -> Element(Msg) {
-  let text_x = position.x +. size.x /. 2.0
-  let text_y = position.y +. size.y /. 2.0
-
-  svg.g([attr("cursor", "pointer"), on_event(MouseDown, fn(_) { msg })], [
-    svg.rect([
-      percentage_attribute("x", position.x),
-      percentage_attribute("y", position.y),
-      percentage_attribute("width", size.x),
-      percentage_attribute("height", size.y),
-      attr("rx", "5"),
-      attr("ry", "5"),
-      attr("fill", "#8d693b"),
-    ]),
-    svg.text(
-      [
-        percentage_attribute("x", text_x),
-        percentage_attribute("y", text_y),
-        attr("text-anchor", "middle"),
-        attr("dominant-baseline", "middle"),
-        attr("fill", "#f8e3c1"),
-      ],
-      text,
-    ),
-  ])
-}
-
-fn button_positions() -> List(Vector2) {
-  let left = column_x(4)
-  let right = column_x(6)
-
-  let top = foundations_y()
-  let bottom = top +. button_size().y +. margin().y
-
-  [
-    Vector2(left, top),
-    Vector2(left, bottom),
-    Vector2(right, top),
-    Vector2(right, bottom),
-  ]
-}
-
-fn view_buttons() -> Element(Msg) {
-  let buttons = {
-    let specs =
-      [
-        #("New game", RequestedNewGame(Random)),
-        #("Restart", PressedRestart),
-        #("Daily", RequestedNewGame(Daily)),
-        #("Help", PressedHelp),
-      ]
-      |> list.zip(button_positions())
-
-    use #(#(text, msg), position) <- list.map(specs)
-    view_button(text, position, button_size(), msg)
-  }
-
-  svg.g([], buttons)
-}
-
-fn view_undo_button(card: Card) -> Element(Msg) {
-  let normal_card_size = card_size()
-  let small_card_size = normal_card_size |> glector.scale(0.7)
-  let button_size = button_size() |> glector.scale(0.8)
-
-  let center =
-    Vector2(column_x(5), foundations_y())
-    |> origin_to_center(normal_card_size)
-
-  let card_position = center_to_origin(center, small_card_size)
-  let button_position = center_to_origin(center, button_size)
-
-  svg.g([], [
-    view_card(card, card_position, small_card_size, None),
-    view_button("Undo", button_position, button_size, UndoMove),
-  ])
+  svg.g([], [slot, ..cards])
 }

@@ -49,7 +49,6 @@ packages = [
 
 [requirements]
 fortfound_core = { path = "../fortfound_core" }
-gleam_community_colour = { version = ">= 2.0.0 and < 3.0.0" }
 gleam_stdlib = { version = ">= 0.56.0 and < 1.0.0" }
 glector = { version = ">= 1.1.0 and < 2.0.0" }
 lustre = { git = "https://github.com/lustre-labs/lustre", ref = "main" }
