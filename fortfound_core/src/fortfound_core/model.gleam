@@ -24,7 +24,7 @@ pub type MinorArcanaFoundation {
     swords: Int,
     clubs: Int,
     cups: Int,
-    blocking: Option(Card),
+    blocker: Option(Card),
   )
 }
 
@@ -47,23 +47,23 @@ pub type State {
   )
 }
 
+pub type HistoryStep {
+  HistoryStep(moved: Card, state_before: State)
+}
+
 pub type Game {
-  Game(
-    seed: Seed,
-    current_state: State,
-    moved_card: Option(Card),
-    previous_state: Option(State),
-  )
+  Game(seed: Option(Seed), state: State, history: List(HistoryStep))
 }
 
 pub type Location {
   Column(Int)
   BlockingMinorArcanaFoundation
-  UndoButton
-  NewGameButton
-  DailyChallengeButton
 }
 
 pub type Move {
   Move(source: Location, target: Location)
+}
+
+pub type ValidMove {
+  ValidMove(moved: Card, result: State)
 }
