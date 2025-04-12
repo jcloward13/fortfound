@@ -89,104 +89,107 @@ type Msg {
 }
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
-  case model, msg {
-    _, RequestedNewGame(scenario) -> {
+  case msg {
+    RequestedNewGame(scenario) -> {
       let seed = case scenario {
         Random -> scenarios.random_winnable_scenario()
         Daily -> scenarios.current_daily_scenario()
         Specific(seed) -> seed
       }
-      #(Model(game_from_seed(seed), None), set_seed_in_uri(seed))
+      let new_model = Model(game_from_seed(seed), None)
+      #(new_model, set_seed_in_uri(seed))
     }
 
-    Model(game: Game(seed: Some(seed), ..), ..), PressedRestart -> {
-      #(Model(game_from_seed(seed), None), effect.none())
+    PressedRestart -> {
+      let new_model = case model.game.seed {
+        None -> Model(game: empty_game(), selected: None)
+        Some(seed) -> Model(game_from_seed(seed), selected: None)
+      }
+      #(new_model, effect.none())
     }
 
-    Model(selected: None, ..), GrabbedCard(source:, position:, pointer_offset:) -> {
-      let model = case get_card(model.game.state, source) {
-        Ok(card) -> {
-          let selected =
-            Some(Dragging(card:, from: source, position:, pointer_offset:))
-          Model(..model, selected:)
+    GrabbedCard(source:, position:, pointer_offset:) -> {
+      let grabbed_card = get_card(model.game.state, source)
+      let new_model = case model.selected, grabbed_card {
+        None, Ok(card) -> {
+          let dragging =
+            Dragging(card:, from: source, position:, pointer_offset:)
+          Model(..model, selected: Some(dragging))
+        }
+        _, _ -> model
+      }
+      #(new_model, effect.none())
+    }
+
+    MovedPointer(position) -> {
+      let new_model = case model.selected {
+        Some(Dragging(..) as dragging) -> {
+          let position = glector.add(position, dragging.pointer_offset)
+          let dragging = Dragging(..dragging, position:)
+          Model(..model, selected: Some(dragging))
         }
         _ -> model
       }
-      #(model, effect.none())
+      #(new_model, effect.none())
     }
 
-    Model(selected: Some(Dragging(..) as dragging), ..), MovedPointer(position) -> {
-      let position = glector.add(position, dragging.pointer_offset)
-      let selected = Some(Dragging(..dragging, position:))
-      let model = Model(..model, selected:)
-      #(model, effect.none())
-    }
-
-    Model(selected: Some(Dragging(..)), ..), ReleasedCard(target: None) -> #(
-      Model(..model, selected: None),
-      effect.none(),
-    )
-
-    Model(
-      selected: Some(Dragging(from: source, ..)),
-      ..,
-    ),
-      ReleasedCard(target: Some(target))
-    -> {
-      let model = case make_move(model.game, Move(source, target)) {
-        Ok(game) -> Model(game:, selected: None)
-        _ -> Model(..model, selected: None)
-      }
-      #(model, effect.none())
-    }
-
-    Model(selected: None, ..), Clicked(Some(location)) -> {
-      let model = case get_card(model.game.state, location) {
-        Ok(card) ->
-          Model(..model, selected: Some(Highlighted(card:, location:)))
+    ReleasedCard(target: None) -> {
+      let new_model = case model.selected {
+        Some(Dragging(..)) -> Model(..model, selected: None)
         _ -> model
       }
-      #(model, effect.none())
+      #(new_model, effect.none())
     }
 
-    Model(
-      selected: Some(Highlighted(location: source, ..)),
-      ..,
-    ),
-      Clicked(Some(target))
-    -> {
-      let model = case make_move(model.game, Move(source, target)) {
-        Ok(game) -> Model(game:, selected: None)
-        _ -> Model(..model, selected: None)
+    ReleasedCard(target: Some(target)) -> {
+      let new_model = case model.selected {
+        Some(Dragging(from: source, ..)) ->
+          case make_move(model.game, Move(source, target)) {
+            Ok(game) -> Model(game:, selected: None)
+            Error(Nil) -> Model(..model, selected: None)
+          }
+        _ -> model
       }
-      #(model, effect.none())
+      #(new_model, effect.none())
     }
 
-    _, Clicked(None) -> #(Model(..model, selected: None), effect.none())
+    Clicked(Some(target)) -> {
+      let new_model = case model.selected {
+        Some(Highlighted(location: source, ..)) -> {
+          case make_move(model.game, Move(source, target)) {
+            Ok(game) -> Model(game:, selected: None)
+            Error(Nil) -> Model(..model, selected: None)
+          }
+        }
 
-    Model(
-      game: Game(
-        history: [HistoryStep(state_before:, ..), ..previous_history],
-        ..,
-      ),
-      ..,
-    ),
-      UndoMove
-    -> {
-      #(
-        Model(
-          ..model,
-          game: Game(
-            ..model.game,
-            state: state_before,
-            history: previous_history,
-          ),
-        ),
-        effect.none(),
-      )
+        _ -> {
+          case get_card(model.game.state, target) {
+            Ok(card) -> {
+              let highlighted = Highlighted(card:, location: target)
+              Model(..model, selected: Some(highlighted))
+            }
+            Error(Nil) -> model
+          }
+        }
+      }
+      #(new_model, effect.none())
     }
 
-    _, _ -> #(model, effect.none())
+    Clicked(None) -> #(Model(..model, selected: None), effect.none())
+
+    UndoMove -> {
+      let new_model = case model.game.history {
+        [HistoryStep(state_before:, ..), ..history] -> {
+          let game = Game(..model.game, state: state_before, history:)
+          Model(..model, game:)
+        }
+        [] -> model
+      }
+      #(new_model, effect.none())
+    }
+
+    // TODO
+    PressedHelp -> #(model, effect.none())
   }
 }
 
