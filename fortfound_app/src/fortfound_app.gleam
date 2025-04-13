@@ -272,7 +272,7 @@ fn view_help() -> Element(Msg) {
       ]),
       html.p([], [
         bullet_list([
-          "White cards are called Major Arcanas and black cards are called Major Arcanas.",
+          "White cards are called Minor Arcanas and black cards are called Major Arcanas.",
           "Minor Arcanas' foundations go up by suit, from Ace to King.",
           "Major Arcanas' foundation goes simultaneously up from 0 and down from 21.",
         ]),
