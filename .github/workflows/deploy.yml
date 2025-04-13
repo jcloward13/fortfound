@@ -33,7 +33,7 @@ jobs:
       - name: Build
         run: |
           cd fortfound_app
-          gleam build
+          gleam run -m lustre/dev build app
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -41,7 +41,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "."
+          path: "fortfound_app"
 
       - name: Deploy to GitHub Pages
         id: deployment

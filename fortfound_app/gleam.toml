@@ -5,9 +5,11 @@ target = "javascript"
 licences = ["AGPL-3.0-or-later"]
 repository = { type = "github", user = "cauebs", repo = "fortfound" }
 links = [{ title = "Home page", href = "https://cauebs.github.io/fortfound" }]
+dev-dependencies = { lustre_dev_tools = ">= 1.7.0 and < 2.0.0" }
 
 [dependencies]
 gleam_stdlib = ">= 0.56.0 and < 1.0.0"
+lustre = { git = "https://github.com/lustre-labs/lustre", ref = "main" }
+modem = ">= 2.0.1 and < 3.0.0"
 fortfound_core = { path = "../fortfound_core" }
-plinth = ">= 0.5.9 and < 1.0.0"
-kitten = ">= 0.0.5 and < 1.0.0"
+glector = ">= 1.1.0 and < 2.0.0"

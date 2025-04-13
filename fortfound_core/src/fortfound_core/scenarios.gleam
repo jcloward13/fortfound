@@ -1,73 +1,13 @@
-import fortfound_core/model.{
-  type State, MajorArcana, MajorArcanaFoundation, MinorArcanaFoundation, State,
-}
 import fortfound_core/rng.{type Seed}
-import gleam/dict
 import gleam/float
 import gleam/int
 import gleam/list
-import gleam/option.{None, Some}
 import gleam/result
 import gleam/time/timestamp
 import prng/random
 import prng/seed
 
-pub fn won_example() -> State {
-  State(
-    major_arcana_foundation: MajorArcanaFoundation(
-      low: Some(10),
-      high: Some(11),
-    ),
-    minor_arcana_foundation: MinorArcanaFoundation(
-      coins: 13,
-      swords: 13,
-      clubs: 13,
-      cups: 13,
-      blocking: None,
-    ),
-    columns: dict.from_list([
-      #(0, []),
-      #(1, []),
-      #(2, []),
-      #(3, []),
-      #(4, []),
-      #(5, []),
-      #(6, []),
-      #(7, []),
-      #(8, []),
-      #(9, []),
-      #(10, []),
-    ]),
-  )
-}
-
-pub fn trivially_winnable_example() -> State {
-  State(
-    major_arcana_foundation: MajorArcanaFoundation(low: Some(8), high: Some(13)),
-    minor_arcana_foundation: MinorArcanaFoundation(
-      coins: 13,
-      swords: 13,
-      clubs: 13,
-      cups: 13,
-      blocking: None,
-    ),
-    columns: dict.from_list([
-      #(0, [MajorArcana(10), MajorArcana(9)]),
-      #(1, [MajorArcana(11), MajorArcana(12)]),
-      #(2, []),
-      #(3, []),
-      #(4, []),
-      #(5, []),
-      #(6, []),
-      #(7, []),
-      #(8, []),
-      #(9, []),
-      #(10, []),
-    ]),
-  )
-}
-
-const winnable_seeds = [
+const precomputed_winnable_seeds = [
   "YY5V3B", "AWLQU5", "FBPRDO", "M2W1J2", "SLSB4S", "PM6Z75", "5QTD5E", "GNZ3E8",
   "8KJY0R", "KSUDRF", "5VRKNO", "IXCY4W", "7KBROT", "FQGH2A", "5X7KET", "KOQMIU",
   "SQ7QOU", "9YPO9B", "S5W5AU", "KE3D5X", "P8O0GB", "2TYOVC", "IUS9ZJ", "YS928L",
@@ -134,10 +74,10 @@ const winnable_seeds = [
 ]
 
 pub fn random_winnable_scenario() -> Seed {
-  let n = list.length(winnable_seeds)
+  let n = list.length(precomputed_winnable_seeds)
 
   let assert Ok(encoded_seed) =
-    winnable_seeds
+    precomputed_winnable_seeds
     |> list.drop(int.random(n - 1))
     |> list.first
 
@@ -155,11 +95,11 @@ pub fn current_daily_scenario() -> Seed {
     |> int.divide(seconds_in_day)
 
   let index =
-    random.int(0, list.length(winnable_seeds) - 1)
+    random.int(0, list.length(precomputed_winnable_seeds) - 1)
     |> random.sample(seed.new(unix_day))
 
   let assert Ok(seed) =
-    winnable_seeds
+    precomputed_winnable_seeds
     |> list.drop(index)
     |> list.first
     |> result.then(rng.decode_seed)
