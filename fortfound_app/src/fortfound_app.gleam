@@ -45,7 +45,7 @@ type SelectedCard {
 }
 
 type Model {
-  Model(game: Game, selected: Option(SelectedCard))
+  Model(game: Game, selected: Option(SelectedCard), displaying_help: Bool)
 }
 
 fn init(_flags) -> #(Model, Effect(Msg)) {
@@ -55,7 +55,7 @@ fn init(_flags) -> #(Model, Effect(Msg)) {
     |> result.map(game_from_seed)
     |> result.lazy_unwrap(empty_game)
 
-  #(Model(game, None), effect.none())
+  #(Model(game:, selected: None, displaying_help: False), effect.none())
 }
 
 fn parse_seed(uri: Uri) -> Result(Seed, Nil) {
@@ -96,14 +96,14 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         Daily -> scenarios.current_daily_scenario()
         Specific(seed) -> seed
       }
-      let new_model = Model(game_from_seed(seed), None)
+      let new_model = Model(..model, game: game_from_seed(seed), selected: None)
       #(new_model, set_seed_in_uri(seed))
     }
 
     PressedRestart -> {
       let new_model = case model.game.seed {
-        None -> Model(game: empty_game(), selected: None)
-        Some(seed) -> Model(game_from_seed(seed), selected: None)
+        None -> Model(..model, game: empty_game(), selected: None)
+        Some(seed) -> Model(..model, game: game_from_seed(seed), selected: None)
       }
       #(new_model, effect.none())
     }
@@ -145,7 +145,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       let new_model = case model.selected {
         Some(Dragging(from: source, ..)) ->
           case make_move(model.game, Move(source, target)) {
-            Ok(game) -> Model(game:, selected: None)
+            Ok(game) -> Model(..model, game:, selected: None)
             Error(Nil) -> Model(..model, selected: None)
           }
         _ -> model
@@ -157,7 +157,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       let new_model = case model.selected {
         Some(Highlighted(location: source, ..)) -> {
           case make_move(model.game, Move(source, target)) {
-            Ok(game) -> Model(game:, selected: None)
+            Ok(game) -> Model(..model, game:, selected: None)
             Error(Nil) -> Model(..model, selected: None)
           }
         }
@@ -188,8 +188,10 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       #(new_model, effect.none())
     }
 
-    // TODO
-    PressedHelp -> #(model, effect.none())
+    PressedHelp -> #(
+      Model(..model, displaying_help: !model.displaying_help) |> echo,
+      effect.none(),
+    )
   }
 }
 
@@ -207,25 +209,112 @@ fn view(model: Model) -> Element(Msg) {
 
   let layout = layout.get_layout()
 
-  [
-    case model.selected {
-      Some(Dragging(card:, position:, ..)) ->
-        view_dragged_card(card, position, layout)
-      _ -> element.none()
-    },
-    view_major_arcana_foundation(major, layout),
-    view_buttons(layout),
-    case model.game.history {
-      [HistoryStep(moved:, ..), ..] -> view_undo_button(moved, layout)
-      _ -> element.none()
-    },
-    view_minor_arcana_foundation(minor, layout, model.selected),
-    ..columns
-    |> dict.to_list
-    |> list.map(view_column(_, layout, model.selected))
-  ]
-  |> list.reverse
-  |> svg(2000, 1000)
+  case model.displaying_help {
+    True -> view_help()
+    False ->
+      [
+        case model.selected {
+          Some(Dragging(card:, position:, ..)) ->
+            view_dragged_card(card, position, layout)
+          _ -> element.none()
+        },
+        view_major_arcana_foundation(major, layout),
+        view_buttons(layout),
+        case model.game.history {
+          [HistoryStep(moved:, ..), ..] -> view_undo_button(moved, layout)
+          _ -> element.none()
+        },
+        view_minor_arcana_foundation(minor, layout, model.selected),
+        ..columns
+        |> dict.to_list
+        |> list.map(view_column(_, layout, model.selected))
+      ]
+      |> list.reverse
+      |> svg(2000, 1000)
+  }
+}
+
+fn bullet_list(items: List(String)) -> Element(Msg) {
+  items
+  |> list.map(fn(item) { html.li([], [html.text(item)]) })
+  |> html.ul([], _)
+}
+
+fn link(text: String, href: String) -> Element(Msg) {
+  html.a([attribute.href(href), attribute.style("color", palette.button_text)], [
+    html.text(text),
+  ])
+}
+
+fn view_help() -> Element(Msg) {
+  html.div(
+    [
+      attribute.styles([
+        #("margin", "5vh"),
+        #("font-family", "Arima"),
+        #("font-size", "1.75em"),
+        #("color", palette.button_text),
+      ]),
+    ],
+    [
+      html.p([], [
+        html.h2([], [
+          html.text("This is a clone of "),
+          link(
+            "Zachtronics' Fortune's Foundation",
+            "https://www.zachtronics.com/solitaire-collection/",
+          ),
+          html.text("."),
+        ]),
+      ]),
+      html.p([], [
+        bullet_list(["Your goal is to get all cards to their foundations."]),
+      ]),
+      html.p([], [
+        bullet_list([
+          "White cards are called Major Arcanas and black cards are called Major Arcanas.",
+          "Minor Arcanas' foundations go up by suit, from Ace to King.",
+          "Major Arcanas' foundation goes simultaneously up from 0 and down from 21.",
+        ]),
+      ]),
+      html.p([], [
+        bullet_list([
+          "Cards of the same kind (Major Arcanas or Minor Arcanas of the same suit) can be stacked in either ascending or descending order.",
+          "You can only move one card at a time, but stacked cards will follow consecutively for your convenience.",
+          "You can place one single card on top of the Minor Arcanas' foundations, blocking them temporarily.",
+        ]),
+      ]),
+      html.p([], [
+        html.text("This was made with "),
+        link("Gleam", "https://gleam.run"),
+        html.text(" and "),
+        link("Lustre", "https://lustre.build"),
+        html.text("."),
+        html.br([]),
+        html.text("Source code is available at "),
+        link(
+          "github.com/cauebs/fortfound",
+          "https://github.com/cauebs/fortfound",
+        ),
+        html.text("."),
+      ]),
+      html.button(
+        [
+          attribute.styles([
+            #("background", palette.button_fill),
+            #("border", "3.5px solid " <> palette.button_stroke),
+            #("border-radius", "5px"),
+            #("padding", "1em"),
+            #("color", palette.button_text),
+            #("font-family", "Arima"),
+            #("font-size", "1em"),
+          ]),
+          event.on_click(PressedHelp),
+        ],
+        [html.text("Return")],
+      ),
+    ],
+  )
 }
 
 @external(javascript, "./fortfound_app_ffi.mjs", "screen_to_svg_percentage")
@@ -289,10 +378,6 @@ fn svg(elements: List(Element(Msg)), width: Int, height: Int) -> Element(Msg) {
   )
 }
 
-fn stroke_width() -> Float {
-  3.5
-}
-
 fn suit_icon(suit: Suit) -> String {
   case suit {
     Clubs -> "♣"
@@ -344,7 +429,7 @@ fn view_card(
       attr("ry", "5"),
       attr("fill", fill_color),
       attr("stroke", main_color),
-      attr("stroke-width", float.to_string(stroke_width())),
+      attr("stroke-width", "3.5"),
     ])
 
   let text =
@@ -405,7 +490,7 @@ fn view_slot(
       attr("ry", "5"),
       attr("fill", palette.slot_fill),
       attr("stroke", palette.slot_stroke),
-      attr("stroke-width", float.to_string(stroke_width())),
+      attr("stroke-width", "3.5"),
     ]
     |> list.append(case target {
       Some(loc) -> [
@@ -435,6 +520,8 @@ fn view_button(
       attr("rx", "5"),
       attr("ry", "5"),
       attr("fill", palette.button_fill),
+      attr("stroke", palette.button_stroke),
+      attr("stroke-width", "3.5"),
     ]),
     svg.text(
       [

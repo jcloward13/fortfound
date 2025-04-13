@@ -11,7 +11,9 @@ pub const slot_stroke = dark_gold
 // Must be transparent instead of 'none' otherwise events won't trigger.
 pub const slot_fill = transparent
 
-pub const major_arcana_stroke = "#eea96b"
+const gold = "#eea96b"
+
+pub const major_arcana_stroke = gold
 
 pub const major_arcana_fill = "#282523"
 
@@ -26,6 +28,8 @@ pub const swords = "#326973"
 const beige = "#f8e3c1"
 
 pub const minor_arcana_fill = beige
+
+pub const button_stroke = gold
 
 pub const button_fill = dark_gold
 
