@@ -60,10 +60,22 @@ pub type Location {
   BlockingMinorArcanaFoundation
 }
 
-pub type Move {
-  Move(source: Location, target: Location)
+pub type MoveRequest {
+  MoveRequest(source: Location, target: Location)
 }
 
-pub type ValidMove {
-  ValidMove(moved: Card, result: State)
+pub type PartialMove {
+  PartialMove(source: Location, card: Card, target: Location)
+}
+
+pub type MoveToFoundation {
+  MoveToFoundation(source: Location, card: Card)
+}
+
+pub type FullMove {
+  FullMove(
+    requested: PartialMove,
+    stacked: List(PartialMove),
+    to_foundations: List(MoveToFoundation),
+  )
 }

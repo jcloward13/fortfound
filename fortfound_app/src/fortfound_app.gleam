@@ -5,7 +5,8 @@ import fortfound_core/game.{empty_game, game_from_seed, get_card, make_move}
 import fortfound_core/model.{
   type Card, type Game, type Location, type MajorArcanaFoundation,
   type MinorArcanaFoundation, BlockingMinorArcanaFoundation, Clubs, Coins,
-  Column, Cups, Game, HistoryStep, MajorArcana, MinorArcana, Move, State, Swords,
+  Column, Cups, Game, HistoryStep, MajorArcana, MinorArcana, MoveRequest, State,
+  Swords,
 }
 import fortfound_core/rng.{type Seed}
 import fortfound_core/scenarios
@@ -144,8 +145,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     ReleasedCard(target: Some(target)) -> {
       let new_model = case model.selected {
         Some(Dragging(from: source, ..)) ->
-          case make_move(model.game, Move(source, target)) {
-            Ok(game) -> Model(..model, game:, selected: None)
+          case make_move(model.game, MoveRequest(source, target)) {
+            Ok(#(_move, game)) -> Model(..model, game:, selected: None)
             Error(Nil) -> Model(..model, selected: None)
           }
         _ -> model
@@ -156,8 +157,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     Clicked(Some(target)) -> {
       let new_model = case model.selected {
         Some(Highlighted(location: source, ..)) -> {
-          case make_move(model.game, Move(source, target)) {
-            Ok(game) -> Model(..model, game:, selected: None)
+          case make_move(model.game, MoveRequest(source, target)) {
+            Ok(#(_move, game)) -> Model(..model, game:, selected: None)
             Error(Nil) -> Model(..model, selected: None)
           }
         }
