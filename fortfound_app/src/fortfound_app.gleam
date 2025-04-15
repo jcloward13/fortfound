@@ -706,11 +706,16 @@ fn view_column(
         }
         _ -> Ok(Vector2(x, y))
       }
-      #(card, position)
+      let interactable = row == list.length(cards) - 1
+      #(card, position, interactable)
     })
-    |> list.filter_map(fn(card_and_position) {
-      let #(card, position) = card_and_position
+    |> list.filter_map(fn(spec) {
+      let #(card, position, interactable) = spec
       use position <- result.map(position)
+      let loc = case interactable {
+        False -> None
+        True -> loc
+      }
       view_card(card:, position:, scale: 1.0, layout:, loc:)
     })
 
