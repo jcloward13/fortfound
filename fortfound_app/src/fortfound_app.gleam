@@ -1,11 +1,11 @@
 import fortfound_app/layout.{type Layout}
 import fortfound_app/palette
+import fortfound_app/special_characters.{suit_icon}
 import fortfound_core/game.{empty_game, game_from_seed, get_card, make_move}
 import fortfound_core/model.{
   type Card, type Game, type Location, type MajorArcanaFoundation,
-  type MinorArcanaFoundation, type Suit, BlockingMinorArcanaFoundation, Clubs,
-  Coins, Column, Cups, Game, HistoryStep, MajorArcana, MinorArcana, Move, State,
-  Swords,
+  type MinorArcanaFoundation, BlockingMinorArcanaFoundation, Clubs, Coins,
+  Column, Cups, Game, HistoryStep, MajorArcana, MinorArcana, Move, State, Swords,
 }
 import fortfound_core/rng.{type Seed}
 import fortfound_core/scenarios
@@ -376,15 +376,6 @@ fn svg(elements: List(Element(Msg)), width: Int, height: Int) -> Element(Msg) {
     ],
     elements,
   )
-}
-
-fn suit_icon(suit: Suit) -> String {
-  case suit {
-    Clubs -> "♣"
-    Coins -> "♦"
-    Cups -> "♥"
-    Swords -> "♠"
-  }
 }
 
 fn card_text(card: Card) -> String {
