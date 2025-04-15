@@ -2,7 +2,7 @@ import fortfound_core/model.{
   type Card, Clubs, Coins, Cups, MajorArcana, MinorArcana, Swords,
 }
 
-const transparent = "#00000000"
+pub const transparent = "#00000000"
 
 const dark_gold = "#8d693b"
 

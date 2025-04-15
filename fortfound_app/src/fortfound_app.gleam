@@ -626,11 +626,31 @@ fn view_minor_arcana_foundation(
     Vector2(float.sum(column_xs) /. 4.0, layout.foundations_y)
     |> glector.add(glector.scale(layout.card_size, 0.5))
 
-  let blocker = case foundation.blocker, selected {
+  let blocker_or_collider = case foundation.blocker, selected {
     Some(blocker), Some(Dragging(card: dragging, ..)) if blocker == dragging ->
       element.none()
+
     Some(blocker), _ -> view_blocker(blocker, center, layout)
-    _, _ -> element.none()
+
+    None, _ -> {
+      let assert Ok(x) = list.first(column_xs)
+      let y = layout.foundations_y
+      let assert Ok(width) =
+        list.last(column_xs)
+        |> result.map(float.add(_, layout.card_size.x /. 2.0))
+      let height = layout.card_size.y
+
+      let loc = Some(BlockingMinorArcanaFoundation)
+      svg.rect([
+        percentage_attribute("x", x),
+        percentage_attribute("y", y),
+        percentage_attribute("width", width),
+        percentage_attribute("height", height),
+        attr("fill", palette.transparent),
+        on_mouse_event(MouseUp, fn(_) { ReleasedCard(target: loc) }),
+        on_mouse_event(MouseClick, fn(_) { Clicked(loc) }),
+      ])
+    }
   }
 
   let foundation_cards =
@@ -642,15 +662,9 @@ fn view_minor_arcana_foundation(
       view_card(card:, position:, scale: 1.0, layout:, loc: None)
     })
 
-  let elements = list.reverse([blocker, ..foundation_cards])
+  let elements = list.reverse([blocker_or_collider, ..foundation_cards])
 
-  let loc = Some(BlockingMinorArcanaFoundation)
-  let events = [
-    on_mouse_event(MouseUp, fn(_) { ReleasedCard(target: loc) }),
-    on_mouse_event(MouseClick, fn(_) { Clicked(loc) }),
-  ]
-
-  svg.g(events, elements)
+  svg.g([], elements)
 }
 
 fn view_blocker(
