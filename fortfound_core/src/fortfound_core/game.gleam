@@ -1,9 +1,8 @@
 import fortfound_core/model.{
-  type Card, type Game, type Location, type MajorArcanaFoundation,
-  type MinorArcanaFoundation, type Move, type State, type Suit, type ValidMove,
-  BlockingMinorArcanaFoundation, Clubs, Coins, Column, Cups, Game, HistoryStep,
-  MajorArcana, MajorArcanaFoundation, MinorArcana, MinorArcanaFoundation, Move,
-  State, Swords, ValidMove,
+  type Card, type Game, type Location, type Move, type State, type Suit,
+  type ValidMove, BlockingMinorArcanaFoundation, Clubs, Coins, Column, Cups,
+  Game, HistoryStep, MajorArcana, MajorArcanaFoundation, MinorArcana,
+  MinorArcanaFoundation, Move, State, Swords, ValidMove,
 }
 import fortfound_core/rng.{type Seed, shuffle}
 import gleam/bool

@@ -1,6 +1,6 @@
 import fortfound_core/game.{game_from_seed, is_winnable}
 import fortfound_core/model.{
-  type State, MajorArcana, MajorArcanaFoundation, MinorArcanaFoundation, State,
+  MajorArcana, MajorArcanaFoundation, MinorArcanaFoundation, State,
 }
 import fortfound_core/scenarios
 import gleam/dict
