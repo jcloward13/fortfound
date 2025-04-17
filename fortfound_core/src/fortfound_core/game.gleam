@@ -80,7 +80,7 @@ fn are_stackable(c1: Card, c2: Card) -> Bool {
   }
 }
 
-fn get_column(state: State, index: Int) -> List(Card) {
+pub fn get_column(state: State, index: Int) -> List(Card) {
   let assert Ok(column) = dict.get(state.columns, index)
   column
 }
