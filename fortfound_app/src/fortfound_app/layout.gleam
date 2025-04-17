@@ -1,3 +1,4 @@
+import gleam/float
 import gleam/int
 import gleam/list
 import glector.{type Vector2, Vector2}
@@ -109,6 +110,13 @@ pub fn major_arcana_foundation_xs(layout: Layout) -> List(Float) {
 
 pub fn minor_arcana_foundation_xs(layout: Layout) -> List(Float) {
   list.range(7, 10) |> list.map(column_x(_, layout))
+}
+
+pub fn minor_arcana_foundation_center(layout: Layout) -> Vector2 {
+  let column_xs = minor_arcana_foundation_xs(layout)
+
+  Vector2(float.sum(column_xs) /. 4.0, layout.foundations_y)
+  |> glector.add(glector.scale(layout.card_size, 0.5))
 }
 
 pub fn button_positions(layout: Layout) -> List(Vector2) {

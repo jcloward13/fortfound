@@ -1,8 +1,10 @@
 import fortfound_core/model.{
-  type Card, type Game, type Location, type Move, type State, type Suit,
-  type ValidMove, BlockingMinorArcanaFoundation, Clubs, Coins, Column, Cups,
-  Game, HistoryStep, MajorArcana, MajorArcanaFoundation, MinorArcana,
-  MinorArcanaFoundation, Move, State, Swords, ValidMove,
+  type Card, type FullMove, type Game, type Location, type MoveRequest,
+  type MoveToFoundation, type PartialMove, type State, type Suit,
+  BlockingMinorArcanaFoundation, Clubs, Coins, Column, Cups, FullMove, Game,
+  HistoryStep, MajorArcana, MajorArcanaFoundation, MinorArcana,
+  MinorArcanaFoundation, MoveRequest, MoveToFoundation, PartialMove, State,
+  Swords,
 }
 import fortfound_core/rng.{type Seed, shuffle}
 import gleam/bool
@@ -78,7 +80,7 @@ fn are_stackable(c1: Card, c2: Card) -> Bool {
   }
 }
 
-fn get_column(state: State, index: Int) -> List(Card) {
+pub fn get_column(state: State, index: Int) -> List(Card) {
   let assert Ok(column) = dict.get(state.columns, index)
   column
 }
@@ -163,32 +165,51 @@ fn put_card(state: State, card: Card, target: Location) -> Result(State, Nil) {
   }
 }
 
-fn move_card(state: State, move: Move) -> Result(State, Nil) {
-  use #(card, state) <- result.then(pop_card(state, move.source))
-  put_card(state, card, move.target)
+fn move_card(
+  state: State,
+  request: MoveRequest,
+) -> Result(#(PartialMove, State), Nil) {
+  use #(card, state) <- result.try(pop_card(state, request.source))
+  use new_state <- result.try(put_card(state, card, request.target))
+  Ok(#(PartialMove(request.source, card, request.target), new_state))
 }
 
-fn move_stack(state: State, move: Move) -> Result(State, Nil) {
-  case move_card(state, move) {
-    Ok(state_after_one) ->
-      move_stack(state_after_one, move)
-      |> result.or(Ok(state_after_one))
-    _ -> Error(Nil)
+fn move_stack(
+  state: State,
+  request: MoveRequest,
+) -> Result(#(PartialMove, List(PartialMove), State), Nil) {
+  use #(first, state_after_first) <- result.try(move_card(state, request))
+
+  let #(rest, new_state) = case move_stack(state_after_first, request) {
+    Ok(#(second, others, new_state)) -> #([second, ..others], new_state)
+    Error(_) -> #([], state_after_first)
   }
+
+  Ok(#(first, rest, new_state))
 }
 
-fn validate_move(state: State, move: Move) -> Result(ValidMove, Nil) {
-  use <- bool.guard(move.source == move.target, return: Error(Nil))
-  use card <- result.then(get_card(state, move.source))
-  move_stack(state, move)
-  |> result.map(apply_colaterals)
-  |> result.map(ValidMove(card, _))
+fn validate_move(
+  state: State,
+  request: MoveRequest,
+) -> Result(#(FullMove, State), Nil) {
+  use <- bool.guard(request.source == request.target, return: Error(Nil))
+
+  let move_result = move_stack(state, request)
+  use #(requested, stacked, new_state) <- result.then(move_result)
+
+  let #(to_foundations, new_state) = apply_colaterals(new_state)
+  Ok(#(FullMove(requested:, stacked:, to_foundations:), new_state))
 }
 
-pub fn make_move(game: Game, move: Move) -> Result(Game, Nil) {
-  use ValidMove(card, new_state) <- result.try(validate_move(game.state, move))
-  let history = [HistoryStep(card, game.state), ..game.history]
-  Ok(Game(..game, state: new_state, history:))
+pub fn make_move(
+  game: Game,
+  request: MoveRequest,
+) -> Result(#(FullMove, Game), Nil) {
+  let move_result = validate_move(game.state, request)
+  use #(move, new_state) <- result.then(move_result)
+  let history = [HistoryStep(move.requested.card, game.state), ..game.history]
+  let game = Game(..game, state: new_state, history:)
+  Ok(#(move, game))
 }
 
 fn is_won(state: State) -> Bool {
@@ -205,19 +226,13 @@ fn is_won(state: State) -> Bool {
   }
 }
 
-fn move_combinations(
-  sources: List(Location),
-  targets: List(Location),
-) -> List(Move) {
-  {
-    use source <- list.map(sources)
-    use target <- list.map(targets)
-    Move(source, target)
-  }
-  |> list.flatten
+fn cartesian_product(l1: List(a), l2: List(a)) -> List(#(a, a)) {
+  use first <- list.flat_map(l1)
+  use second <- list.map(l2)
+  #(first, second)
 }
 
-fn valid_moves(state: State) -> List(ValidMove) {
+fn valid_moves(state: State) -> List(#(FullMove, State)) {
   let #(empty_columns, non_empty_columns) =
     state.columns
     |> dict.to_list
@@ -236,8 +251,11 @@ fn valid_moves(state: State) -> List(ValidMove) {
     None -> #(sources, [BlockingMinorArcanaFoundation, ..targets])
   }
 
-  move_combinations(sources, targets)
-  |> list.filter_map(validate_move(state, _))
+  cartesian_product(sources, targets)
+  |> list.filter_map(fn(source_target) {
+    let #(source, target) = source_target
+    validate_move(state, MoveRequest(source, target))
+  })
 }
 
 fn next_low_major_arcana(state: State) -> Int {
@@ -319,14 +337,16 @@ fn move_to_foundation(state: State, card: Card) -> State {
   }
 }
 
-fn apply_colaterals(state: State) -> State {
+fn apply_colaterals(state: State) -> #(List(MoveToFoundation), State) {
   case find_ready_for_foundation(state) {
     Ok(location) -> {
       let assert Ok(#(card, state_without_card)) = pop_card(state, location)
       let new_state = state_without_card |> move_to_foundation(card)
-      apply_colaterals(new_state)
+      let move = MoveToFoundation(location, card)
+      let #(other_moves, new_state) = apply_colaterals(new_state)
+      #([move, ..other_moves], new_state)
     }
-    _ -> state
+    _ -> #([], state)
   }
 }
 
@@ -406,9 +426,7 @@ pub fn is_winnable_aux(pending: List(State), previous: Set(State)) -> Bool {
         False -> {
           let previous = previous |> set.insert(state)
 
-          let next_states =
-            valid_moves(state)
-            |> list.map(fn(valid_move) { valid_move.result })
+          let next_states = valid_moves(state) |> list.map(pair.second)
 
           let pending =
             next_states
