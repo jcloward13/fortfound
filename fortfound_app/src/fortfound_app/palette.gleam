@@ -20,7 +20,7 @@ pub const major_arcana_fill = "#282523"
 pub const clubs = "#332bc4"
 
 // Diamonds
-pub const coins = "#5b7344"  
+pub const coins = "#5b7344"
 
 // Hearts
 pub const cups = "#c72626"
