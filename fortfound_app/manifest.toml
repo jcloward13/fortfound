@@ -52,7 +52,7 @@ packages = [
 fortfound_core = { path = "../fortfound_core" }
 gleam_stdlib = { version = ">= 0.56.0 and < 1.0.0" }
 glector = { version = ">= 1.1.0 and < 2.0.0" }
-lustre = { git = "https://github.com/lustre-labs/lustre", ref = "main" }
-lustre_animation = { git = "https://github.com/cauebs/lustre_animation", ref = "main" }
+lustre = { git = "https://github.com/lustre-labs/lustre", ref = "4.6.4" }
+lustre_animation = { git = "https://github.com/jcloward13/lustre_animation", ref = "main" }
 lustre_dev_tools = { version = ">= 1.7.0 and < 2.0.0" }
 modem = { version = ">= 2.0.1 and < 3.0.0" }
