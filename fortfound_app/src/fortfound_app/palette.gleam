@@ -19,10 +19,13 @@ pub const major_arcana_fill = "#282523"
 
 pub const clubs = "#332bc4"
 
-pub const coins = "#e0d210"
+// Diamonds
+pub const coins = "#5b7344"  
 
-pub const cups = "#b50b0b"
+// Hearts
+pub const cups = "#c72626"
 
+// Spades
 pub const swords = "#192224"
 
 const beige = "#f8e3c1"
