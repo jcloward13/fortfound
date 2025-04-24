@@ -17,13 +17,13 @@ pub const major_arcana_stroke = gold
 
 pub const major_arcana_fill = "#282523"
 
-pub const clubs = "#497327"
+pub const clubs = "#332bc4"
 
-pub const coins = "#956f3f"
+pub const coins = "#e0d210"
 
-pub const cups = "#963728"
+pub const cups = "#b50b0b"
 
-pub const swords = "#326973"
+pub const swords = "#192224"
 
 const beige = "#f8e3c1"
 
