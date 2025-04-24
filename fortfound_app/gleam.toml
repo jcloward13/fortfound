@@ -9,7 +9,7 @@ dev-dependencies = { lustre_dev_tools = ">= 1.7.0 and < 2.0.0" }
 
 [dependencies]
 gleam_stdlib = ">= 0.56.0 and < 1.0.0"
-lustre = { git = "https://github.com/lustre-labs/lustre", ref = "main" }
+lustre = { git = "https://github.com/lustre-labs/lustre", ref = "v5.0.2" }
 modem = ">= 2.0.1 and < 3.0.0"
 fortfound_core = { path = "../fortfound_core" }
 glector = ">= 1.1.0 and < 2.0.0"
