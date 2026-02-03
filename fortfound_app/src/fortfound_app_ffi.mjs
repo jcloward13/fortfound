@@ -39,3 +39,14 @@ export function percentage_to_absolute(vector) {
         y: vector.y * view_box.height,
     };
 }
+
+const TIMES_COMPLETED_KEY = "fortfound_times_completed";
+
+export function get_times_completed() {
+    const value = localStorage.getItem(TIMES_COMPLETED_KEY);
+    return value ? parseInt(value, 10) : 0;
+}
+
+export function set_times_completed(count) {
+    localStorage.setItem(TIMES_COMPLETED_KEY, count.toString());
+}

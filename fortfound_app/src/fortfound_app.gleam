@@ -65,6 +65,7 @@ type Model {
     animations: CardAnimations,
     displaying_help: Bool,
     layout: Layout,
+    times_completed: Int,
   )
 }
 
@@ -82,6 +83,7 @@ fn init(_flags) -> #(Model, Effect(Msg)) {
       animations: animation.new(),
       displaying_help: False,
       layout: layout.get_layout(),
+      times_completed: get_times_completed(),
     ),
     effect.none(),
   )
@@ -479,12 +481,42 @@ fn animate_full_move(
   animations |> animation.schedule_many(new_animations)
 }
 
+fn is_won(state: model.State) -> Bool {
+  state.minor_arcana_foundation.coins == 13
+  && state.minor_arcana_foundation.swords == 13
+  && state.minor_arcana_foundation.clubs == 13
+  && state.minor_arcana_foundation.cups == 13
+  && case
+    state.major_arcana_foundation.low,
+    state.major_arcana_foundation.high
+  {
+    Some(low), Some(high) -> low + 1 == high
+    _, _ -> False
+  }
+}
+
 fn make_move(model: Model, source: Location, target: Location) -> Model {
   case game.make_move(model.game, MoveRequest(source, target)) {
     Ok(#(move, game_after_move)) -> {
       let animations =
         animate_full_move(game_after_move, model.layout, model.animations, move)
-      Model(..model, game: game_after_move, selected: None, animations:)
+
+      let times_completed = case is_won(game_after_move.state) {
+        True -> {
+          let new_count = model.times_completed + 1
+          set_times_completed(new_count)
+          new_count
+        }
+        False -> model.times_completed
+      }
+
+      Model(
+        ..model,
+        game: game_after_move,
+        selected: None,
+        animations:,
+        times_completed:,
+      )
     }
 
     Error(Nil) -> Model(..model, selected: None)
@@ -510,6 +542,7 @@ fn view(model: Model) -> Element(Msg) {
         view_animated_cards(model.animations, model.layout),
         view_major_arcana_foundation(major, model.layout, model.animations),
         view_buttons(model.layout),
+        view_times_completed(model.times_completed, model.layout),
         case model.game.history {
           [HistoryStep(moved:, ..), ..] -> view_undo_button(moved, model.layout)
           _ -> element.none()
@@ -615,6 +648,12 @@ fn screen_to_svg_percentage(vector: Vector2) -> Vector2
 
 @external(javascript, "./fortfound_app_ffi.mjs", "percentage_to_absolute")
 fn percentage_to_absolute(vector: Vector2) -> Vector2
+
+@external(javascript, "./fortfound_app_ffi.mjs", "get_times_completed")
+fn get_times_completed() -> Int
+
+@external(javascript, "./fortfound_app_ffi.mjs", "set_times_completed")
+fn set_times_completed(count: Int) -> Nil
 
 fn percentage_attribute(name: String, value: Float) -> Attribute(a) {
   attr(name, float.to_string(value *. 100.0) <> "%")
@@ -836,6 +875,23 @@ fn view_buttons(layout: Layout) -> Element(Msg) {
   }
 
   svg.g([], buttons)
+}
+
+fn view_times_completed(times_completed: Int, layout: Layout) -> Element(Msg) {
+  let x = layout.column_x(5, layout) +. layout.card_size.x /. 2.0
+  let y = layout.foundations_y +. layout.card_size.y +. layout.margins.y
+
+  svg.text(
+    [
+      percentage_attribute("x", x),
+      percentage_attribute("y", y),
+      attr("text-anchor", "middle"),
+      attr("dominant-baseline", "hanging"),
+      attr("fill", palette.button_text),
+      attr("font-size", "0.8em"),
+    ],
+    "Wins: " <> int.to_string(times_completed),
+  )
 }
 
 fn view_undo_button(card: Card, layout: Layout) -> Element(Msg) {
