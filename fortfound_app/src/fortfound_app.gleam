@@ -886,7 +886,7 @@ fn view_times_completed(times_completed: Int, layout: Layout) -> Element(Msg) {
       percentage_attribute("x", x),
       percentage_attribute("y", y),
       attr("text-anchor", "middle"),
-      attr("dominant-baseline", "hanging"),
+      attr("dominant-baseline", "middle"),
       attr("fill", palette.button_text),
       attr("font-size", "0.8em"),
     ],
