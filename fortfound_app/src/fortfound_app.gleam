@@ -879,14 +879,14 @@ fn view_buttons(layout: Layout) -> Element(Msg) {
 
 fn view_times_completed(times_completed: Int, layout: Layout) -> Element(Msg) {
   let x = layout.column_x(5, layout) +. layout.card_size.x /. 2.0
-  let y = layout.foundations_y +. layout.button_size.y /. 2.0
+  let y = layout.foundations_y
 
   svg.text(
     [
       percentage_attribute("x", x),
       percentage_attribute("y", y),
       attr("text-anchor", "middle"),
-      attr("dominant-baseline", "middle"),
+      attr("dominant-baseline", "hanging"),
       attr("fill", palette.button_text),
       attr("font-size", "0.8em"),
     ],
